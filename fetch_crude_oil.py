@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 获取原油价格数据 (使用新浪财经)
-Version: 2.1
+Version: 3.0
 """
 
 import requests
