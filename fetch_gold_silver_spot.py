@@ -81,6 +81,19 @@ def fetch_from_sina():
                 "timestamp": datetime.now().isoformat()
             }
     
+    # 计算金银价格比 (Gold-Silver Ratio)
+    if 'XAU' in result and 'XAG' in result:
+        xau_price = result['XAU']['price']
+        xag_price = result['XAG']['price']
+        if xag_price > 0:
+            gold_silver_ratio = xau_price / xag_price
+            result['gold_silver_ratio'] = {
+                "value": round(gold_silver_ratio, 2),
+                "calculation": f"XAU({xau_price}) / XAG({xag_price})",
+                "interpretation": "金银价格比表示一盎司黄金可以购买多少盎司白银",
+                "note": "通常认为高于80表示黄金相对昂贵，低于60表示白银相对昂贵"
+            }
+    
     return result if result else None
 
 
