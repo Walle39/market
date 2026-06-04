@@ -29,16 +29,28 @@ def fetch_from_sina():
             parts = data_str.split(',')
             
             if len(parts) >= 11:
+                price = float(parts[1]) if parts[1] else None
+                pre_close = float(parts[3]) if parts[3] else None
+                
+                # 计算涨幅和涨跌额
+                change = None
+                change_percent = None
+                if price is not None and pre_close is not None and pre_close != 0:
+                    change = price - pre_close
+                    change_percent = (change / pre_close) * 100
+                
                 return {
                     "symbol": "DXY",
                     "name": parts[9] if len(parts) > 9 else "美元指数",
-                    "price": float(parts[1]) if parts[1] else None,
+                    "price": price,
                     "open": float(parts[2]) if parts[2] else None,
-                    "pre_close": float(parts[3]) if parts[3] else None,
+                    "pre_close": pre_close,
                     "bid": float(parts[5]) if parts[5] else None,
                     "ask": float(parts[8]) if parts[8] else None,
                     "high": float(parts[6]) if parts[6] else None,
                     "low": float(parts[7]) if parts[7] else None,
+                    "change": round(change, 4) if change is not None else None,
+                    "change_percent": round(change_percent, 2) if change_percent is not None else None,
                     "time": parts[0] if len(parts) > 0 else None,
                     "date": parts[10] if len(parts) > 10 else None,
                     "source": "新浪财经 DINIW",
