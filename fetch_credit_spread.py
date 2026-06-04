@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-获取信用利差数据 (Credit Spread)
-Version: 1.0
+获取信用利差数据 (Credit Spread) - Baa-10Y
+Version: 1.1
 
 信用利差 = BAA企业债收益率 - 10年期美国国债收益率
 
 数据来源:
 - 10年期美国国债收益率: AkShare
-- 企业债收益率: 使用LQD ETF收益率作为代理指标
+- BAA企业债收益率: Yahoo Finance / 新浪财经 LQD ETF作为代理指标
 """
 
 import requests
@@ -23,18 +23,15 @@ def fetch_us_bond_yields():
             latest = df.iloc[-1]
             return {
                 "date": str(latest.get('日期', '')),
-                "2_year": float(latest.get('美国国债收益率2年', 0)),
-                "5_year": float(latest.get('美国国债收益率5年', 0)),
                 "10_year": float(latest.get('美国国债收益率10年', 0)),
-                "30_year": float(latest.get('美国国债收益率30年', 0)),
                 "source": "AkShare"
             }
     except Exception as e:
         print(f"获取国债收益率失败: {e}")
     return None
 
-def fetch_corporate_bond_yield():
-    """获取企业债收益率代理数据"""
+def fetch_baa_yield_proxy():
+    """从新浪财经获取LQD ETF作为BAA代理指标"""
     try:
         url = "https://hq.sinajs.cn/list=gb_lqd"
         headers = {
@@ -51,70 +48,74 @@ def fetch_corporate_bond_yield():
                 "name": parts[0],
                 "price": float(parts[1]),
                 "change": float(parts[2]),
-                "time": parts[3],
                 "change_percent": float(parts[4]),
-                "volume": float(parts[10]),
-                "source": "新浪财经"
+                "date": parts[3].split(' ')[0],
+                "source": "新浪财经 (LQD ETF作为BAA代理)"
             }
     except Exception as e:
-        print(f"获取企业债ETF数据失败: {e}")
-    
+        print(f"获取LQD ETF数据失败: {e}")
     return None
 
 def fetch_credit_spread():
-    """计算信用利差"""
-    print("正在获取信用利差数据...")
+    """计算信用利差 Baa-10Y"""
+    print("正在获取信用利差数据 (Baa-10Y)...")
     
     # 获取国债收益率
     bond_yields = fetch_us_bond_yields()
     
-    # 获取企业债收益率代理
-    corporate_bond = fetch_corporate_bond_yield()
+    # 获取BAA企业债收益率代理
+    baa_proxy = fetch_baa_yield_proxy()
     
     # 构建结果
     result = {
-        "symbol": "CREDIT_SPREAD",
-        "name": "信用利差",
+        "symbol": "BAA_10Y_SPREAD",
+        "name": "信用利差 Baa-10Y",
         "description": "信用利差 = BAA企业债收益率 - 10年期美国国债收益率",
         "data_source": "AkShare + 新浪财经",
         "timestamp": datetime.now().isoformat()
     }
     
-    if bond_yields and corporate_bond:
-        # 使用LQD ETF收益率作为企业债收益率代理
-        # 注意：实际BAA收益率需要FRED等数据源，这里使用ETF价格作为参考
+    if bond_yields and baa_proxy:
         result["us_bond_10y"] = {
             "yield": bond_yields["10_year"],
             "date": bond_yields["date"],
             "source": bond_yields["source"]
         }
         
-        result["corporate_bond_proxy"] = corporate_bond
+        result["baa_proxy"] = {
+            "symbol": baa_proxy["symbol"],
+            "name": baa_proxy["name"],
+            "price": baa_proxy["price"],
+            "change": baa_proxy["change"],
+            "change_percent": baa_proxy["change_percent"],
+            "date": baa_proxy["date"],
+            "source": baa_proxy["source"]
+        }
         
         result["analysis"] = {
             "description": "信用利差反映市场对企业信用风险的评估",
             "interpretation": "利差扩大通常表示风险偏好下降，利差收窄表示风险偏好上升",
-            "note": "由于AkShare未提供BAA企业债收益率，使用LQD ETF作为代理指标"
+            "note": "使用LQD ETF作为BAA企业债收益率的代理指标，实际BAA收益率建议通过FRED API获取"
         }
         
         result["limitations"] = [
-            "1. AkShare暂未提供直接的BAA企业债收益率数据",
-            "2. 使用LQD ETF价格作为企业债市场状况的代理指标",
-            "3. 如需精确的BAA收益率，建议使用FRED API (series_id: BAA)",
+            "1. 使用LQD ETF价格作为企业债市场状况的代理指标",
+            "2. 如需精确的BAA收益率，建议使用FRED API (series_id: BAA)",
+            "3. FRED API需要注册获取免费API Key",
             "4. 实际信用利差计算需要企业债收益率与国债收益率的差值"
         ]
     else:
         if not bond_yields:
             result["error"] = "无法获取国债收益率数据"
-        if not corporate_bond:
-            result["error"] = result.get("error", "") + "无法获取企业债数据"
+        if not baa_proxy:
+            result["error"] = result.get("error", "") + "无法获取企业债代理数据"
     
     return result
 
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("信用利差数据 (Credit Spread)")
+    print("信用利差数据 (Credit Spread) - Baa-10Y")
     print("=" * 60)
     data = fetch_credit_spread()
     print(json.dumps(data, indent=2, ensure_ascii=False))
