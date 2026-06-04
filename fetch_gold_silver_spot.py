@@ -32,18 +32,25 @@ def fetch_from_sina():
     if xau_data and 'hq_str_hf_XAU' in xau_data:
         parts = xau_data.split('"')[1].split(',') if '"' in xau_data else xau_data.split(',')
         if len(parts) > 6:
+            price = float(parts[0])
+            pre_close = float(parts[3])
+            change = price - pre_close
+            change_percent = (change / pre_close) * 100
+            
             result['XAU'] = {
                 "symbol": "XAU",
                 "name": "伦敦金现货",
-                "price": float(parts[0]),
+                "price": price,
                 "buy": float(parts[1]) if parts[1] else None,
                 "sell": float(parts[2]) if parts[2] else None,
-                "pre_close": float(parts[3]),
+                "pre_close": pre_close,
                 "high": float(parts[4]),
                 "low": float(parts[5]),
                 "time": parts[6],
                 "open": float(parts[7]) if len(parts) > 7 and parts[7] else None,
                 "date": parts[12] if len(parts) > 12 else None,
+                "change": round(change, 2),
+                "change_percent": round(change_percent, 2),
                 "timestamp": datetime.now().isoformat()
             }
     
@@ -52,18 +59,25 @@ def fetch_from_sina():
     if xag_data and 'hq_str_hf_XAG' in xag_data:
         parts = xag_data.split('"')[1].split(',') if '"' in xag_data else xag_data.split(',')
         if len(parts) > 6:
+            price = float(parts[0])
+            pre_close = float(parts[3])
+            change = price - pre_close
+            change_percent = (change / pre_close) * 100
+            
             result['XAG'] = {
                 "symbol": "XAG",
                 "name": "伦敦银现货",
-                "price": float(parts[0]),
+                "price": price,
                 "buy": float(parts[1]) if parts[1] else None,
                 "sell": float(parts[2]) if parts[2] else None,
-                "pre_close": float(parts[3]),
+                "pre_close": pre_close,
                 "high": float(parts[4]),
                 "low": float(parts[5]),
                 "time": parts[6],
                 "open": float(parts[7]) if len(parts) > 7 and parts[7] else None,
                 "date": parts[12] if len(parts) > 12 else None,
+                "change": round(change, 4),
+                "change_percent": round(change_percent, 2),
                 "timestamp": datetime.now().isoformat()
             }
     
