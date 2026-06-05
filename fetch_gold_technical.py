@@ -106,7 +106,7 @@ def fetch_gold_history_fred(current_price=None):
 
 
 def cross_validate_sources(fred_data, akshare_data):
-    """交叉验证FRED和AkShare数据，偏差超过5%发出警告"""
+    """交叉验证FRED和AkShare数据，比较相对变化而非绝对价格"""
     if not fred_data or not akshare_data:
         return None, "数据不足"
     
@@ -116,34 +116,55 @@ def cross_validate_sources(fred_data, akshare_data):
     if len(fred_prices) < 5 or len(akshare_prices) < 5:
         return None, "数据不足"
     
-    # 取最近5个数据点比较
+    # 取最近N个数据点比较相对变化
     n_compare = 5
-    fred_recent = fred_prices[-n_compare:]
-    akshare_recent = akshare_prices[-n_compare:]
     
+    # 计算每日涨跌幅变化
+    def calc_changes(prices, n):
+        changes = []
+        for i in range(-n, 0):
+            if i > -len(prices) and i-1 > -len(prices):
+                try:
+                    change = (prices[i] - prices[i-1]) / prices[i-1] * 100
+                    changes.append(abs(change))
+                except:
+                    changes.append(0)
+            else:
+                changes.append(0)
+        return changes
+    
+    fred_changes = calc_changes(fred_prices, n_compare)
+    akshare_changes = calc_changes(akshare_prices, n_compare)
+    
+    # 计算涨跌幅偏差
     deviations = []
-    for i in range(n_compare):
-        f = fred_recent[i]
-        a = akshare_recent[i]
-        if a != 0:
-            dev = abs(f - a) / a * 100
+    for i in range(min(len(fred_changes), len(akshare_changes))):
+        if fred_changes[i] > 0 and akshare_changes[i] > 0:
+            dev = abs(fred_changes[i] - akshare_changes[i]) / max(fred_changes[i], akshare_changes[i]) * 100
             deviations.append(dev)
+        elif fred_changes[i] > 0 or akshare_changes[i] > 0:
+            # 一个有变化，一个没变化，偏差100%
+            deviations.append(100)
+        else:
+            deviations.append(0)
     
     avg_deviation = sum(deviations) / len(deviations) if deviations else 0
     max_deviation = max(deviations) if deviations else 0
     
-    # 判断偏差是否超过5%
+    # 判断偏差是否超过5%（比较相对变化）
     warning = None
     if avg_deviation > 5:
-        warning = f"⚠️ 警告: FRED与AkShare数据偏差 {avg_deviation:.2f}% (超过5%阈值)"
+        warning = f"⚠️ 警告: FRED与AkShare相对变化偏差 {avg_deviation:.2f}% (超过5%阈值)"
     elif max_deviation > 5:
-        warning = f"⚠️ 警告: 最大偏差 {max_deviation:.2f}% (超过5%阈值)"
+        warning = f"⚠️ 警告: 最大变化偏差 {max_deviation:.2f}% (超过5%阈值)"
     
     return {
-        'fred_latest': fred_prices[-1] if fred_prices else None,
-        'akshare_latest': akshare_prices[-1] if akshare_prices else None,
-        'avg_deviation': round(avg_deviation, 2),
-        'max_deviation': round(max_deviation, 2),
+        'fred_source': fred_data.get('source', 'Unknown'),
+        'akshare_source': akshare_data.get('source', 'Unknown'),
+        'fred_unit': fred_data.get('unit', 'USD/oz'),
+        'akshare_unit': akshare_data.get('unit', 'CNY/g'),
+        'avg_change_deviation': round(avg_deviation, 2),
+        'max_change_deviation': round(max_deviation, 2),
         'deviations': [round(d, 2) for d in deviations],
         'warning': warning,
         'status': 'OK' if avg_deviation <= 5 else 'WARNING'
@@ -151,7 +172,7 @@ def cross_validate_sources(fred_data, akshare_data):
 
 
 def fetch_gold_history_akshare():
-    """使用AkShare获取黄金历史数据（上海金）"""
+    """使用AkShare获取黄金历史数据（上海金，元/克）"""
     try:
         import akshare as ak
         
@@ -162,26 +183,14 @@ def fetch_gold_history_akshare():
             price_cols = [c for c in df.columns if '价' in c or 'price' in c.lower()]
             if price_cols:
                 price_col = price_cols[0]
-                # 获取元/克价格
-                prices_cny = df[price_col].tolist()
-                dates = df['日期'].tolist() if '日期' in df.columns else [None] * len(prices_cny)
-                
-                # 转换为美元/盎司（粗略估算）
-                # 1盎司 = 31.1035克，假设汇率7.25
-                usd_per_oz = []
-                for p in prices_cny:
-                    try:
-                        # 元/克 转 美元/盎司: price_cny * 31.1035 / exchange_rate
-                        usd_price = p * 31.1035 / 7.25
-                        usd_per_oz.append(round(usd_price, 2))
-                    except:
-                        usd_per_oz.append(p)
+                prices = df[price_col].tolist()
+                dates = df['日期'].tolist() if '日期' in df.columns else [None] * len(prices)
                 
                 return {
-                    'prices': usd_per_oz,
+                    'prices': prices,
                     'dates': dates,
-                    'source': 'AkShare spot_golden_benchmark_sge (上海金, 已转换USD/oz)',
-                    'unit_note': '原始数据: 元/克, 已转换为USD/oz (汇率7.25, 31.1035g/oz)'
+                    'source': 'AkShare spot_golden_benchmark_sge (上海金，元/克)',
+                    'unit': 'CNY/g'
                 }
     except Exception as e:
         print(f'AkShare获取失败: {e}')
