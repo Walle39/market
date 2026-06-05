@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 使用 AkShare macro_cons_gold() 获取黄金持仓数据
+包含4周变化率计算
 """
 
 import akshare as ak
@@ -10,16 +11,16 @@ from datetime import datetime
 def fetch_gold_holdings():
     """获取黄金持仓数据"""
     print("正在从 AkShare 获取黄金持仓数据...")
-    
+
     try:
         df = ak.macro_cons_gold()
-        
+
         # 获取最近的数据
         df_clean = df.dropna(subset=['总库存'])
-        
+
         if len(df_clean) > 0:
             latest = df_clean.iloc[-1]
-            
+
             result = {
                 "symbol": "GOLD_HOLDINGS",
                 "name": "黄金ETF持仓",
@@ -34,7 +35,7 @@ def fetch_gold_holdings():
                 "timestamp": datetime.now().isoformat(),
                 "historical_data": []
             }
-            
+
             # 添加最近20条数据
             for i in range(1, min(21, len(df_clean)+1)):
                 row = df_clean.iloc[-i]
@@ -44,7 +45,15 @@ def fetch_gold_holdings():
                     "change": float(row['增持/减持']),
                     "total_value": float(row['总价值'])
                 })
-            
+
+            # 计算4周变化率 (假设约20个工作日为4周)
+            if len(df_clean) > 20:
+                current_inventory = float(df_clean.iloc[-1]['总库存'])
+                four_weeks_ago_inventory = float(df_clean.iloc[-20]['总库存'])
+                change_4w = ((current_inventory - four_weeks_ago_inventory) / four_weeks_ago_inventory) * 100
+                result['latest']['change_4w_percent'] = round(change_4w, 2)
+                result['latest']['change_4w_note'] = "4周变化率 (%)"
+
             return result
         else:
             return {
