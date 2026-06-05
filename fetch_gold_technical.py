@@ -105,70 +105,105 @@ def fetch_gold_history_fred(current_price=None):
     return None
 
 
-def cross_validate_sources(fred_data, akshare_data):
-    """交叉验证FRED和AkShare数据，比较相对变化而非绝对价格"""
-    if not fred_data or not akshare_data:
-        return None, "数据不足"
+def calculate_indicators_for_source(prices):
+    """为一个数据源计算所有技术指标"""
+    if len(prices) < 60:
+        return None
     
-    fred_prices = fred_data['prices']
-    akshare_prices = akshare_data['prices']
+    rsi = calculate_rsi(prices, 14)
+    macd, signal, ema, macd_score, macd_signal = calculate_macd(prices)
+    slope, slope_angle, slope_pct_change, slope_status = calculate_ma_slope(prices, 20)
+    ma_slope_score, ma_slope_signal = evaluate_ma_slope_signal(slope, slope_angle, slope_pct_change)
+    bollinger, bollinger_status = calculate_bollinger_bands(prices, 20, 2)
+    if bollinger:
+        bollinger_score, bollinger_signal = evaluate_bollinger_signals(bollinger)
+    else:
+        bollinger_score, bollinger_signal = 50, "数据不足"
     
-    if len(fred_prices) < 5 or len(akshare_prices) < 5:
-        return None, "数据不足"
-    
-    # 取最近N个数据点比较相对变化
-    n_compare = 5
-    
-    # 计算每日涨跌幅变化
-    def calc_changes(prices, n):
-        changes = []
-        for i in range(-n, 0):
-            if i > -len(prices) and i-1 > -len(prices):
-                try:
-                    change = (prices[i] - prices[i-1]) / prices[i-1] * 100
-                    changes.append(abs(change))
-                except:
-                    changes.append(0)
-            else:
-                changes.append(0)
-        return changes
-    
-    fred_changes = calc_changes(fred_prices, n_compare)
-    akshare_changes = calc_changes(akshare_prices, n_compare)
-    
-    # 计算涨跌幅偏差
-    deviations = []
-    for i in range(min(len(fred_changes), len(akshare_changes))):
-        if fred_changes[i] > 0 and akshare_changes[i] > 0:
-            dev = abs(fred_changes[i] - akshare_changes[i]) / max(fred_changes[i], akshare_changes[i]) * 100
-            deviations.append(dev)
-        elif fred_changes[i] > 0 or akshare_changes[i] > 0:
-            # 一个有变化，一个没变化，偏差100%
-            deviations.append(100)
-        else:
-            deviations.append(0)
-    
-    avg_deviation = sum(deviations) / len(deviations) if deviations else 0
-    max_deviation = max(deviations) if deviations else 0
-    
-    # 判断偏差是否超过5%（比较相对变化）
-    warning = None
-    if avg_deviation > 5:
-        warning = f"⚠️ 警告: FRED与AkShare相对变化偏差 {avg_deviation:.2f}% (超过5%阈值)"
-    elif max_deviation > 5:
-        warning = f"⚠️ 警告: 最大变化偏差 {max_deviation:.2f}% (超过5%阈值)"
+    # RSI评分
+    if rsi < 30:
+        rsi_score = 100 - rsi
+    elif rsi > 70:
+        rsi_score = 100 - rsi
+    else:
+        rsi_score = 50
     
     return {
-        'fred_source': fred_data.get('source', 'Unknown'),
-        'akshare_source': akshare_data.get('source', 'Unknown'),
-        'fred_unit': fred_data.get('unit', 'USD/oz'),
-        'akshare_unit': akshare_data.get('unit', 'CNY/g'),
-        'avg_change_deviation': round(avg_deviation, 2),
-        'max_change_deviation': round(max_deviation, 2),
-        'deviations': [round(d, 2) for d in deviations],
-        'warning': warning,
-        'status': 'OK' if avg_deviation <= 5 else 'WARNING'
-    }, warning
+        'rsi_14': {'value': rsi, 'score': rsi_score},
+        'macd': {'macd': macd, 'signal': signal, 'divergence_score': macd_score},
+        'ma_slope': {'slope': slope, 'angle': slope_angle, 'pct_change': slope_pct_change, 'score': ma_slope_score},
+        'bollinger': {'bandwidth': bollinger['bandwidth'] if bollinger else None, 'score': bollinger_score}
+    }
+
+
+def compare_indicator_deviation(fred_indicators, akshare_indicators):
+    """比较两个数据源的技术指标偏差"""
+    if not fred_indicators or not akshare_indicators:
+        return None, "数据不足"
+    
+    deviations = {}
+    warnings = []
+    
+    # 1. 比较RSI偏差
+    fred_rsi = fred_indicators['rsi_14']['value']
+    akshare_rsi = akshare_indicators['rsi_14']['value']
+    rsi_diff = abs(fred_rsi - akshare_rsi)
+    deviations['rsi_14'] = {
+        'fred': fred_rsi,
+        'akshare': akshare_rsi,
+        'diff': round(rsi_diff, 2),
+        'deviation_pct': round(rsi_diff / 50 * 100, 2) if max(fred_rsi, akshare_rsi) > 0 else 0
+    }
+    if rsi_diff > 5:
+        warnings.append(f"⚠️ RSI偏差 {rsi_diff:.2f} (FRED:{fred_rsi} vs AkShare:{akshare_rsi})")
+    
+    # 2. 比较MACD背离评分
+    fred_macd_score = fred_indicators['macd']['divergence_score']
+    akshare_macd_score = akshare_indicators['macd']['divergence_score']
+    macd_diff = abs(fred_macd_score - akshare_macd_score)
+    deviations['macd_divergence'] = {
+        'fred': fred_macd_score,
+        'akshare': akshare_macd_score,
+        'diff': round(macd_diff, 2),
+        'deviation_pct': round(macd_diff / 50 * 100, 2) if max(fred_macd_score, akshare_macd_score) > 0 else 0
+    }
+    if macd_diff > 20:  # 背离评分差异20分以上警告
+        warnings.append(f"⚠️ MACD背离评分偏差 {macd_diff:.0f} (FRED:{fred_macd_score} vs AkShare:{akshare_macd_score})")
+    
+    # 3. 比较均线斜率日涨幅
+    fred_ma_pct_change = fred_indicators['ma_slope']['pct_change']
+    akshare_ma_pct_change = akshare_indicators['ma_slope']['pct_change']
+    fred_daily_change = fred_ma_pct_change / 5  # 转换为日涨幅
+    akshare_daily_change = akshare_ma_pct_change / 5
+    ma_diff = abs(fred_daily_change - akshare_daily_change)
+    deviations['ma_slope'] = {
+        'fred': {'pct_change_5d': fred_ma_pct_change, 'daily_change': round(fred_daily_change, 3)},
+        'akshare': {'pct_change_5d': akshare_ma_pct_change, 'daily_change': round(akshare_daily_change, 3)},
+        'diff': round(ma_diff, 3),
+        'diff_type': '日涨幅差异(%)'
+    }
+    if ma_diff > 0.5:  # 日涨幅差异超过0.5%警告
+        warnings.append(f"⚠️ 均线斜率日涨幅偏差 {ma_diff:.3f}% (FRED:{fred_daily_change:.3f}% vs AkShare:{akshare_daily_change:.3f}%)")
+    
+    # 4. 比较布林带评分
+    fred_bb_score = fred_indicators['bollinger']['score']
+    akshare_bb_score = akshare_indicators['bollinger']['score']
+    bb_diff = abs(fred_bb_score - akshare_bb_score)
+    deviations['bollinger'] = {
+        'fred': fred_bb_score,
+        'akshare': akshare_bb_score,
+        'diff': round(bb_diff, 2),
+        'deviation_pct': round(bb_diff / 50 * 100, 2) if max(fred_bb_score, akshare_bb_score) > 0 else 0
+    }
+    if bb_diff > 20:  # 布林带评分差异20分以上警告
+        warnings.append(f"⚠️ 布林带评分偏差 {bb_diff:.0f} (FRED:{fred_bb_score} vs AkShare:{akshare_bb_score})")
+    
+    # 综合判断
+    warning_msg = " | ".join(warnings) if warnings else None
+    if not warning_msg:
+        warning_msg = "各指标偏差在正常范围内"
+    
+    return deviations, warning_msg
 
 
 def fetch_gold_history_akshare():
@@ -418,51 +453,41 @@ def calculate_gold_technical_analysis():
 
     current_price = current_data['price']
 
-    # 分别获取FRED和AkShare数据用于交叉验证
+    # 分别获取FRED和AkShare数据
     fred_data = fetch_gold_history_fred(current_price)
     akshare_data = fetch_gold_history_akshare()
 
-    # 交叉验证
-    validation_result, warning_msg = cross_validate_sources(fred_data, akshare_data)
+    # 分别为每个数据源计算技术指标
+    fred_indicators = None
+    akshare_indicators = None
 
-    # 选择主数据源：优先使用FRED数据
-    if fred_data:
-        history_data = fred_data
-    elif akshare_data:
-        history_data = akshare_data
+    if fred_data and len(fred_data['prices']) >= 60:
+        fred_indicators = calculate_indicators_for_source(fred_data['prices'])
+        if fred_indicators:
+            fred_indicators['source_info'] = fred_data['source']
+
+    if akshare_data and len(akshare_data['prices']) >= 60:
+        akshare_indicators = calculate_indicators_for_source(akshare_data['prices'])
+        if akshare_indicators:
+            akshare_indicators['source_info'] = akshare_data['source']
+
+    # 比较两个数据源的指标偏差
+    deviations, warning_msg = compare_indicator_deviation(fred_indicators, akshare_indicators)
+
+    # 优先使用FRED数据作为主数据源
+    if fred_indicators:
+        main_indicators = fred_indicators
+        main_source = fred_data['source'] if fred_data else "FRED"
+    elif akshare_indicators:
+        main_indicators = akshare_indicators
+        main_source = akshare_data['source'] if akshare_data else "AkShare"
     else:
-        history_data = fetch_gold_history_sina(current_price)
-
-    prices = history_data['prices']
-    data_source = history_data['source']
-
-    if len(prices) < 60:
         return {
             "symbol": "GOLD_TECH",
             "name": "黄金现货技术分析",
-            "error": "历史数据不足",
+            "error": "无法获取足够的历史数据",
             "timestamp": datetime.now().isoformat()
         }
-
-    rsi = calculate_rsi(prices, 14)
-
-    macd, signal, ema, macd_score, macd_signal = calculate_macd(prices)
-
-    slope, slope_angle, slope_pct_change, slope_status = calculate_ma_slope(prices, 20)
-    ma_slope_score, ma_slope_signal = evaluate_ma_slope_signal(slope, slope_angle, slope_pct_change)
-
-    bollinger, bollinger_status = calculate_bollinger_bands(prices, 20, 2)
-    if bollinger:
-        bollinger_score, bollinger_signal = evaluate_bollinger_signals(bollinger)
-    else:
-        bollinger_score, bollinger_signal = 50, "数据不足"
-
-    if rsi < 30:
-        rsi_score = 100 - rsi
-    elif rsi > 70:
-        rsi_score = 100 - rsi
-    else:
-        rsi_score = 50
 
     result = {
         "symbol": "GOLD_TECH",
@@ -470,39 +495,46 @@ def calculate_gold_technical_analysis():
         "current_price": current_price,
         "date": current_data['date'],
         "timestamp": datetime.now().isoformat(),
-        "data_validation": validation_result,
-        "warning": warning_msg,
+        "data_sources": {
+            "fred": {
+                "source": fred_data['source'] if fred_data else None,
+                "data_points": len(fred_data['prices']) if fred_data else 0,
+                "indicators": fred_indicators
+            },
+            "akshare": {
+                "source": akshare_data['source'] if akshare_data else None,
+                "data_points": len(akshare_data['prices']) if akshare_data else 0,
+                "indicators": akshare_indicators
+            }
+        },
+        "indicator_comparison": {
+            "deviations": deviations,
+            "warning": warning_msg
+        },
         "indicators": {
             "rsi_14": {
-                "value": rsi,
-                "score": rsi_score,
+                "value": main_indicators['rsi_14']['value'],
+                "score": main_indicators['rsi_14']['score'],
                 "interpretation": "RSI<30超卖(高分)，RSI>70超买(低分)"
             },
             "macd_12_26_9": {
-                "macd": macd,
-                "signal_line": signal,
-                "ema_12": ema,
-                "divergence_score": macd_score,
-                "signal": macd_signal
+                "macd": main_indicators['macd']['macd'],
+                "signal_line": main_indicators['macd']['signal'],
+                "divergence_score": main_indicators['macd']['divergence_score'],
+                "signal": main_indicators['macd']['divergence_score']
             },
             "ma_slope_20": {
-                "slope": slope,
-                "angle_degrees": slope_angle,
-                "pct_change_5d": slope_pct_change,
-                "score": ma_slope_score,
-                "interpretation": ma_slope_signal
+                "slope": main_indicators['ma_slope']['slope'],
+                "angle_degrees": main_indicators['ma_slope']['angle'],
+                "pct_change_5d": main_indicators['ma_slope']['pct_change'],
+                "score": main_indicators['ma_slope']['score']
             },
             "bollinger_20_2": {
-                "upper": bollinger['upper'] if bollinger else None,
-                "middle": bollinger['middle'] if bollinger else None,
-                "lower": bollinger['lower'] if bollinger else None,
-                "bandwidth": bollinger['bandwidth'] if bollinger else None,
-                "bandwidth_expanding": bollinger['bandwidth_expanding'] if bollinger else None,
-                "score": bollinger_score,
-                "signal": bollinger_signal
+                "bandwidth": main_indicators['bollinger']['bandwidth'],
+                "score": main_indicators['bollinger']['score']
             }
         },
-        "data_source": data_source
+        "data_source": main_source
     }
 
     return result
