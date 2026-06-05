@@ -44,7 +44,7 @@ def fetch_gold_current_price():
 
 
 def fetch_gold_history_fred(current_price=None):
-    """从FRED尝试获取黄金相关数据"""
+    """从FRED获取黄金相关数据"""
     try:
         # 尝试FRED中的几个可能的黄金价格系列
         gold_series_list = [
@@ -81,10 +81,8 @@ def fetch_gold_history_fred(current_price=None):
                         # 如果是波动率数据且有当前价格，进行适配
                         if series_id == 'GVZCLS' and current_price:
                             scaled_prices = []
-                            # 以最后一个数据点为基准进行缩放
                             base_val = prices[-1]
                             for p in prices:
-                                # 使用相对变化来映射
                                 scaled = current_price * (p / base_val)
                                 scaled_prices.append(scaled)
                             return {
@@ -107,6 +105,51 @@ def fetch_gold_history_fred(current_price=None):
     return None
 
 
+def cross_validate_sources(fred_data, akshare_data):
+    """交叉验证FRED和AkShare数据，偏差超过5%发出警告"""
+    if not fred_data or not akshare_data:
+        return None, "数据不足"
+    
+    fred_prices = fred_data['prices']
+    akshare_prices = akshare_data['prices']
+    
+    if len(fred_prices) < 5 or len(akshare_prices) < 5:
+        return None, "数据不足"
+    
+    # 取最近5个数据点比较
+    n_compare = 5
+    fred_recent = fred_prices[-n_compare:]
+    akshare_recent = akshare_prices[-n_compare:]
+    
+    deviations = []
+    for i in range(n_compare):
+        f = fred_recent[i]
+        a = akshare_recent[i]
+        if a != 0:
+            dev = abs(f - a) / a * 100
+            deviations.append(dev)
+    
+    avg_deviation = sum(deviations) / len(deviations) if deviations else 0
+    max_deviation = max(deviations) if deviations else 0
+    
+    # 判断偏差是否超过5%
+    warning = None
+    if avg_deviation > 5:
+        warning = f"⚠️ 警告: FRED与AkShare数据偏差 {avg_deviation:.2f}% (超过5%阈值)"
+    elif max_deviation > 5:
+        warning = f"⚠️ 警告: 最大偏差 {max_deviation:.2f}% (超过5%阈值)"
+    
+    return {
+        'fred_latest': fred_prices[-1] if fred_prices else None,
+        'akshare_latest': akshare_prices[-1] if akshare_prices else None,
+        'avg_deviation': round(avg_deviation, 2),
+        'max_deviation': round(max_deviation, 2),
+        'deviations': [round(d, 2) for d in deviations],
+        'warning': warning,
+        'status': 'OK' if avg_deviation <= 5 else 'WARNING'
+    }, warning
+
+
 def fetch_gold_history_akshare():
     """使用AkShare获取黄金历史数据（上海金）"""
     try:
@@ -115,15 +158,30 @@ def fetch_gold_history_akshare():
         df = ak.spot_golden_benchmark_sge()
         
         if df is not None and len(df) > 30:
+            # 查找价格列 - 上海金数据通常以"元/克"为单位
             price_cols = [c for c in df.columns if '价' in c or 'price' in c.lower()]
             if price_cols:
                 price_col = price_cols[0]
-                prices = df[price_col].tolist()
-                dates = df['日期'].tolist() if '日期' in df.columns else [None] * len(prices)
+                # 获取元/克价格
+                prices_cny = df[price_col].tolist()
+                dates = df['日期'].tolist() if '日期' in df.columns else [None] * len(prices_cny)
+                
+                # 转换为美元/盎司（粗略估算）
+                # 1盎司 = 31.1035克，假设汇率7.25
+                usd_per_oz = []
+                for p in prices_cny:
+                    try:
+                        # 元/克 转 美元/盎司: price_cny * 31.1035 / exchange_rate
+                        usd_price = p * 31.1035 / 7.25
+                        usd_per_oz.append(round(usd_price, 2))
+                    except:
+                        usd_per_oz.append(p)
+                
                 return {
-                    'prices': prices,
+                    'prices': usd_per_oz,
                     'dates': dates,
-                    'source': 'AkShare spot_golden_benchmark_sge (上海金)'
+                    'source': 'AkShare spot_golden_benchmark_sge (上海金, 已转换USD/oz)',
+                    'unit_note': '原始数据: 元/克, 已转换为USD/oz (汇率7.25, 31.1035g/oz)'
                 }
     except Exception as e:
         print(f'AkShare获取失败: {e}')
@@ -351,10 +409,19 @@ def calculate_gold_technical_analysis():
 
     current_price = current_data['price']
 
-    history_data = fetch_gold_history_fred(current_price)
-    if not history_data:
-        history_data = fetch_gold_history_akshare()
-    if not history_data:
+    # 分别获取FRED和AkShare数据用于交叉验证
+    fred_data = fetch_gold_history_fred(current_price)
+    akshare_data = fetch_gold_history_akshare()
+
+    # 交叉验证
+    validation_result, warning_msg = cross_validate_sources(fred_data, akshare_data)
+
+    # 选择主数据源：优先使用FRED数据
+    if fred_data:
+        history_data = fred_data
+    elif akshare_data:
+        history_data = akshare_data
+    else:
         history_data = fetch_gold_history_sina(current_price)
 
     prices = history_data['prices']
@@ -394,6 +461,8 @@ def calculate_gold_technical_analysis():
         "current_price": current_price,
         "date": current_data['date'],
         "timestamp": datetime.now().isoformat(),
+        "data_validation": validation_result,
+        "warning": warning_msg,
         "indicators": {
             "rsi_14": {
                 "value": rsi,
