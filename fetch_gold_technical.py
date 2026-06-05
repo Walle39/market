@@ -232,24 +232,27 @@ def calculate_ma_slope(prices, period=20):
 
 def evaluate_ma_slope_signal(slope, angle, pct_change):
     """评估均线斜率信号"""
-    # 基于百分比变化评分
-    # 正百分比上涨：高分
-    # 负百分比下跌：低分
+    # 评分规则：
+    # 日涨幅 ≥ +0.5% → 100分
+    # ≤ -0.5% → 0分
+    # 中间线性插值
     
-    if pct_change >= 2:
-        return 100, f"强势上涨趋势 ({pct_change:.2f}%)"
-    elif pct_change >= 1:
-        return 80, f"温和上涨趋势 ({pct_change:.2f}%)"
-    elif pct_change >= 0.5:
-        return 65, f"小幅上涨趋势 ({pct_change:.2f}%)"
-    elif pct_change > -0.5:
-        return 50, f"中性震荡趋势 ({pct_change:.2f}%)"
-    elif pct_change > -1:
-        return 35, f"小幅下跌趋势 ({pct_change:.2f}%)"
-    elif pct_change > -2:
-        return 20, f"温和下跌趋势 ({pct_change:.2f}%)"
+    # 计算日平均涨幅：假设5天平均，除以5
+    daily_pct_change = pct_change / 5
+    
+    if daily_pct_change >= 0.5:
+        return 100, f"强势上涨趋势 (日涨幅{daily_pct_change:.3f}% ≥ +0.5%)"
+    elif daily_pct_change <= -0.5:
+        return 0, f"强势下跌趋势 (日涨幅{daily_pct_change:.3f}% ≤ -0.5%)"
     else:
-        return 0, f"强势下跌趋势 ({pct_change:.2f}%)"
+        # 线性插值：在+0.5%和-0.5%之间
+        # 从-0.5%（0分）到+0.5%（100分）
+        score = (daily_pct_change - (-0.5)) / (0.5 - (-0.5)) * 100
+        score = max(0, min(100, score))
+        if daily_pct_change > 0:
+            return round(score, 1), f"上涨趋势 (日涨幅{daily_pct_change:.3f}%)"
+        else:
+            return round(score, 1), f"下跌趋势 (日涨幅{daily_pct_change:.3f}%)"
 
 
 def calculate_bollinger_bands(prices, period=20, std_dev=2):
