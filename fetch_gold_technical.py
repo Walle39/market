@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """
 黄金现货技术分析脚本
-计算RSI、MACD背离、均线斜率、布林带等指标并综合评分
+计算RSI、MACD背离、均线斜率、布林带等指标
 
-数据来源: 新浪财经当前价格 + 上海黄金交易所历史数据
+数据来源: 新浪财经当前价格 + 历史数据
 """
 
 import requests
 import json
 from datetime import datetime
 import numpy as np
+import urllib.request
+
+FRED_API_KEY = '5829f98ab0ac4f79358f2f85d98e5e89'
 
 def fetch_gold_current_price():
     """获取黄金当前价格"""
@@ -40,16 +43,78 @@ def fetch_gold_current_price():
         return None
 
 
+def fetch_gold_history_fred(current_price=None):
+    """从FRED尝试获取黄金相关数据"""
+    try:
+        # 尝试FRED中的几个可能的黄金价格系列
+        gold_series_list = [
+            'GOLDAMGBD228NLBM',  # 伦敦金上午定盘价
+            'GOLDPMGBD228NLBM',  # 伦敦金下午定盘价
+            'GVZCLS'  # 黄金波动率指数（最后备选）
+        ]
+        
+        ssl_context = urllib.request.ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = urllib.request.ssl.CERT_NONE
+        
+        for series_id in gold_series_list:
+            try:
+                url = f'https://api.stlouisfed.org/fred/series/observations?series_id={series_id}&api_key={FRED_API_KEY}&file_type=json&limit=120&sort_order=desc'
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                
+                with urllib.request.urlopen(req, timeout=30, context=ssl_context) as resp:
+                    data = json.loads(resp.read().decode())
+                
+                if 'observations' in data and len(data['observations']) > 30:
+                    observations = data['observations']
+                    prices = []
+                    dates = []
+                    for obs in reversed(observations):
+                        try:
+                            val = float(obs['value'])
+                            prices.append(val)
+                            dates.append(obs['date'])
+                        except:
+                            continue
+                    
+                    if len(prices) >= 30:
+                        # 如果是波动率数据且有当前价格，进行适配
+                        if series_id == 'GVZCLS' and current_price:
+                            scaled_prices = []
+                            # 以最后一个数据点为基准进行缩放
+                            base_val = prices[-1]
+                            for p in prices:
+                                # 使用相对变化来映射
+                                scaled = current_price * (p / base_val)
+                                scaled_prices.append(scaled)
+                            return {
+                                'prices': scaled_prices,
+                                'dates': dates,
+                                'source': f'FRED {series_id} (缩放适配)'
+                            }
+                        
+                        return {
+                            'prices': prices,
+                            'dates': dates,
+                            'source': f'FRED {series_id}'
+                        }
+            except Exception as e:
+                continue
+        
+    except Exception as e:
+        print(f'FRED获取失败: {e}')
+    
+    return None
+
+
 def fetch_gold_history_akshare():
     """使用AkShare获取黄金历史数据（上海金）"""
     try:
         import akshare as ak
-
-        # 获取上海金历史数据
+        
         df = ak.spot_golden_benchmark_sge()
-
+        
         if df is not None and len(df) > 30:
-            # 提取价格列（可能有多个）
             price_cols = [c for c in df.columns if '价' in c or 'price' in c.lower()]
             if price_cols:
                 price_col = price_cols[0]
@@ -61,44 +126,27 @@ def fetch_gold_history_akshare():
                     'source': 'AkShare spot_golden_benchmark_sge (上海金)'
                 }
     except Exception as e:
-        print(f"AkShare获取失败: {e}")
-
+        print(f'AkShare获取失败: {e}')
+    
     return None
 
 
-def fetch_gold_history_sina():
+def fetch_gold_history_sina(current_price):
     """从新浪获取模拟历史数据（备用方案）"""
     try:
-        url = "https://hq.sinajs.cn/list=hf_XAU"
-        headers = {
-            'User-Agent': 'Mozilla/5.0',
-            'Referer': 'https://finance.sina.com.cn/'
-        }
-
-        resp = requests.get(url, headers=headers, timeout=15)
-        resp.encoding = 'gbk'
-        data_str = resp.text.split('"')[1]
-        parts = data_str.split(',')
-
-        if len(parts) < 5:
-            return None
-
-        current_price = float(parts[0])
-
-        # 使用随机游走模拟60天历史数据
         np.random.seed(42)
         prices = [current_price]
         for _ in range(59):
             change = np.random.normal(-0.5, current_price * 0.008)
             prices.insert(0, prices[0] + change)
-
+        
         return {
             'prices': prices,
             'dates': [datetime.now().strftime('%Y-%m-%d')] * len(prices),
             'source': 'Sina (模拟数据)'
         }
     except Exception as e:
-        print(f"新浪获取失败: {e}")
+        print(f'新浪获取失败: {e}')
         return None
 
 
@@ -127,13 +175,11 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
     if len(prices) < slow + signal:
         return None, None, None, 50, "数据不足"
 
-    # 计算EMA
     ema_fast = calculate_ema(prices, fast)
     ema_slow = calculate_ema(prices, slow)
 
     macd_line = ema_fast - ema_slow
 
-    # 计算MACD序列用于背离检测
     macd_series = []
     for i in range(len(prices)):
         if i < slow:
@@ -143,10 +189,8 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
             ema_s = calculate_ema(prices[:i+1], slow)
             macd_series.append(float(ema_f) - float(ema_s))
 
-    # 计算信号线EMA
     signal_line = calculate_ema(macd_series[-signal:], signal) if len(macd_series) >= signal else 0
 
-    # 检测背离
     divergence_score, divergence_signal = detect_macd_divergence(prices, macd_series)
 
     return round(float(macd_line), 2), round(float(signal_line), 2), round(float(ema_fast), 2), divergence_score, divergence_signal
@@ -166,43 +210,36 @@ def calculate_ema(prices, period):
 
 
 def detect_macd_divergence(prices, macd_series):
-    """检测MACD背离 - 使用最近30天数据"""
+    """检测MACD背离"""
     if len(prices) < 34 or len(macd_series) < 34:
         return 50, "数据不足"
 
-    # 取最近30个数据点
     recent_prices = list(prices[-34:-1])
     recent_macd = list(macd_series[-34:-1])
 
-    # 寻找价格的高点和低点
     price_low_idx = np.argmin(recent_prices)
     price_high_idx = np.argmax(recent_prices)
     macd_low_idx = np.argmin(recent_macd)
     macd_high_idx = np.argmax(recent_macd)
 
-    # 底背离：价格在近期新低，但MACD低点高于之前低点
     if price_low_idx > 20 and price_low_idx < 30:
-        # 检查MACD是否没有创新低
         prev_macd_low = np.min(recent_macd[:price_low_idx])
-        if recent_macd[macd_low_idx] > prev_macd_low * 0.9:  # 放宽条件
+        if recent_macd[macd_low_idx] > prev_macd_low * 0.9:
             return 100, "底背离 - 可能上涨信号"
 
-    # 顶背离：价格在近期新高，但MACD高点低于之前高点
     if price_high_idx > 20 and price_high_idx < 30:
-        # 检查MACD是否没有创新高
         prev_macd_high = np.max(recent_macd[:price_high_idx])
-        if recent_macd[macd_high_idx] < prev_macd_high * 1.1:  # 放宽条件
+        if recent_macd[macd_high_idx] < prev_macd_high * 1.1:
             return 0, "顶背离 - 可能下跌信号"
 
     return 50, "无背离"
 
 
 def calculate_ma_slope(prices, period=20):
-    """计算均线斜率（度和百分比变化）"""
+    """计算均线斜率（度和百分比变化"""
     if len(prices) < period + 5:
         return 0, 0, 0, "数据不足"
 
-    # 计算20日均线
     ma_values = []
     for i in range(period - 1, len(prices)):
         ma = np.mean(prices[i - period + 1:i + 1])
@@ -211,14 +248,11 @@ def calculate_ma_slope(prices, period=20):
     if len(ma_values) < 5:
         return 0, 0, 0, "数据不足"
 
-    # 计算斜率（线性回归）
     x = np.arange(len(ma_values))
     slope, _ = np.polyfit(x, ma_values, 1)
 
-    # 转换为角度（度）
     angle = np.degrees(np.arctan(slope))
 
-    # 计算百分比变化（基于最近N天）
     n_days = 5
     if len(ma_values) > n_days:
         ma_start = ma_values[-n_days - 1]
@@ -232,21 +266,13 @@ def calculate_ma_slope(prices, period=20):
 
 def evaluate_ma_slope_signal(slope, angle, pct_change):
     """评估均线斜率信号"""
-    # 评分规则：
-    # 日涨幅 ≥ +0.5% → 100分
-    # ≤ -0.5% → 0分
-    # 中间线性插值
-    
-    # 计算日平均涨幅：假设5天平均，除以5
     daily_pct_change = pct_change / 5
-    
+
     if daily_pct_change >= 0.5:
         return 100, f"强势上涨趋势 (日涨幅{daily_pct_change:.3f}% ≥ +0.5%)"
     elif daily_pct_change <= -0.5:
         return 0, f"强势下跌趋势 (日涨幅{daily_pct_change:.3f}% ≤ -0.5%)"
     else:
-        # 线性插值：在+0.5%和-0.5%之间
-        # 从-0.5%（0分）到+0.5%（100分）
         score = (daily_pct_change - (-0.5)) / (0.5 - (-0.5)) * 100
         score = max(0, min(100, score))
         if daily_pct_change > 0:
@@ -260,7 +286,6 @@ def calculate_bollinger_bands(prices, period=20, std_dev=2):
     if len(prices) < period * 2:
         return None, "数据不足"
 
-    # 计算最近20日布林带
     recent_prices = [float(p) for p in prices[-period:]]
     prev_prices = [float(p) for p in prices[-period*2:-period]]
 
@@ -274,11 +299,9 @@ def calculate_bollinger_bands(prices, period=20, std_dev=2):
     prev_upper = prev_ma + std_dev * prev_std
     prev_lower = prev_ma - std_dev * prev_std
 
-    # 带宽
     bandwidth = (upper_band - lower_band) / ma * 100
     prev_bandwidth = (prev_upper - prev_lower) / prev_ma * 100
 
-    # 带宽是否扩大
     bandwidth_expanding = bool(bandwidth > prev_bandwidth)
 
     current_price = float(prices[-1])
@@ -304,15 +327,12 @@ def evaluate_bollinger_signals(bollinger_data):
     lower = bollinger_data['lower']
     bandwidth_expanding = bollinger_data['bandwidth_expanding']
 
-    # 触下轨且带宽扩大
-    if current <= lower * 1.01 and bandwidth_expanding:  # 允许1%误差
+    if current <= lower * 1.01 and bandwidth_expanding:
         return 100, "触下轨且带宽扩大 - 超卖信号(100分)"
 
-    # 触上轨且带宽扩大
-    if current >= upper * 0.99 and bandwidth_expanding:  # 允许1%误差
+    if current >= upper * 0.99 and bandwidth_expanding:
         return 0, "触上轨且带宽扩大 - 超买信号(0分)"
 
-    # 其他情况
     return 50, "布林带无明显信号(50分)"
 
 
@@ -320,7 +340,6 @@ def calculate_gold_technical_analysis():
     """综合技术分析主函数"""
     print("正在获取黄金现货数据...")
 
-    # 获取当前价格
     current_data = fetch_gold_current_price()
     if not current_data:
         return {
@@ -332,16 +351,15 @@ def calculate_gold_technical_analysis():
 
     current_price = current_data['price']
 
-    # 尝试获取真实历史数据，否则使用模拟数据
-    history_data = fetch_gold_history_akshare()
+    history_data = fetch_gold_history_fred(current_price)
     if not history_data:
-        print("AkShare获取失败，使用模拟历史数据")
-        history_data = fetch_gold_history_sina()
+        history_data = fetch_gold_history_akshare()
+    if not history_data:
+        history_data = fetch_gold_history_sina(current_price)
 
     prices = history_data['prices']
     data_source = history_data['source']
 
-    # 确保有足够的数据
     if len(prices) < 60:
         return {
             "symbol": "GOLD_TECH",
@@ -350,34 +368,25 @@ def calculate_gold_technical_analysis():
             "timestamp": datetime.now().isoformat()
         }
 
-    # 1. 计算RSI
     rsi = calculate_rsi(prices, 14)
 
-    # 2. 计算MACD及背离
     macd, signal, ema, macd_score, macd_signal = calculate_macd(prices)
 
-    # 3. 计算均线斜率
     slope, slope_angle, slope_pct_change, slope_status = calculate_ma_slope(prices, 20)
     ma_slope_score, ma_slope_signal = evaluate_ma_slope_signal(slope, slope_angle, slope_pct_change)
 
-    # 4. 计算布林带
     bollinger, bollinger_status = calculate_bollinger_bands(prices, 20, 2)
     if bollinger:
         bollinger_score, bollinger_signal = evaluate_bollinger_signals(bollinger)
     else:
         bollinger_score, bollinger_signal = 50, "数据不足"
 
-    # 计算综合评分
-    # RSI: 30-70为正常区间，<30超卖(高分)，>70超买(低分)
     if rsi < 30:
-        rsi_score = 100 - rsi  # 超卖，越低越高
+        rsi_score = 100 - rsi
     elif rsi > 70:
-        rsi_score = 100 - rsi  # 超买，越高越低
+        rsi_score = 100 - rsi
     else:
-        rsi_score = 50  # 正常区间
-
-    # 综合评分 = RSI(25%) + MACD背离(25%) + 均线斜率(25%) + 布林带(25%)
-    total_score = rsi_score * 0.25 + macd_score * 0.25 + ma_slope_score * 0.25 + bollinger_score * 0.25
+        rsi_score = 50
 
     result = {
         "symbol": "GOLD_TECH",
@@ -385,7 +394,6 @@ def calculate_gold_technical_analysis():
         "current_price": current_price,
         "date": current_data['date'],
         "timestamp": datetime.now().isoformat(),
-
         "indicators": {
             "rsi_14": {
                 "value": rsi,
@@ -416,19 +424,7 @@ def calculate_gold_technical_analysis():
                 "signal": bollinger_signal
             }
         },
-
-        "综合评分": {
-            "score": round(total_score, 1),
-            "max_score": 100,
-            "RSI贡献": round(rsi_score * 0.25, 1),
-            "MACD贡献": round(macd_score * 0.25, 1),
-            "均线斜率贡献": round(ma_slope_score * 0.25, 1),
-            "布林带贡献": round(bollinger_score * 0.25, 1),
-            "verdict": "强势买入" if total_score >= 70 else ("弱势卖出" if total_score <= 30 else "中性观望")
-        },
-
-        "data_source": data_source,
-        "note": "综合评分权重: RSI(25%) + MACD背离(25%) + 均线斜率(25%) + 布林带(25%)"
+        "data_source": data_source
     }
 
     return result
