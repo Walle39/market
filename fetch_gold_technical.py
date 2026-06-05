@@ -198,9 +198,9 @@ def detect_macd_divergence(prices, macd_series):
 
 
 def calculate_ma_slope(prices, period=20):
-    """计算均线斜率（度）"""
+    """计算均线斜率（度和百分比变化）"""
     if len(prices) < period + 5:
-        return 0, 0, "数据不足"
+        return 0, 0, 0, "数据不足"
 
     # 计算20日均线
     ma_values = []
@@ -209,7 +209,7 @@ def calculate_ma_slope(prices, period=20):
         ma_values.append(float(ma))
 
     if len(ma_values) < 5:
-        return 0, 0, "数据不足"
+        return 0, 0, 0, "数据不足"
 
     # 计算斜率（线性回归）
     x = np.arange(len(ma_values))
@@ -218,7 +218,38 @@ def calculate_ma_slope(prices, period=20):
     # 转换为角度（度）
     angle = np.degrees(np.arctan(slope))
 
-    return round(float(slope), 4), round(float(angle), 2), "正常"
+    # 计算百分比变化（基于最近N天）
+    n_days = 5
+    if len(ma_values) > n_days:
+        ma_start = ma_values[-n_days - 1]
+        ma_end = ma_values[-1]
+        pct_change = (ma_end - ma_start) / abs(ma_start) * 100 if ma_start != 0 else 0
+    else:
+        pct_change = 0
+
+    return round(float(slope), 4), round(float(angle), 2), round(pct_change, 2), "正常"
+
+
+def evaluate_ma_slope_signal(slope, angle, pct_change):
+    """评估均线斜率信号"""
+    # 基于百分比变化评分
+    # 正百分比上涨：高分
+    # 负百分比下跌：低分
+    
+    if pct_change >= 2:
+        return 100, f"强势上涨趋势 ({pct_change:.2f}%)"
+    elif pct_change >= 1:
+        return 80, f"温和上涨趋势 ({pct_change:.2f}%)"
+    elif pct_change >= 0.5:
+        return 65, f"小幅上涨趋势 ({pct_change:.2f}%)"
+    elif pct_change > -0.5:
+        return 50, f"中性震荡趋势 ({pct_change:.2f}%)"
+    elif pct_change > -1:
+        return 35, f"小幅下跌趋势 ({pct_change:.2f}%)"
+    elif pct_change > -2:
+        return 20, f"温和下跌趋势 ({pct_change:.2f}%)"
+    else:
+        return 0, f"强势下跌趋势 ({pct_change:.2f}%)"
 
 
 def calculate_bollinger_bands(prices, period=20, std_dev=2):
@@ -323,7 +354,8 @@ def calculate_gold_technical_analysis():
     macd, signal, ema, macd_score, macd_signal = calculate_macd(prices)
 
     # 3. 计算均线斜率
-    slope, slope_angle, slope_status = calculate_ma_slope(prices, 20)
+    slope, slope_angle, slope_pct_change, slope_status = calculate_ma_slope(prices, 20)
+    ma_slope_score, ma_slope_signal = evaluate_ma_slope_signal(slope, slope_angle, slope_pct_change)
 
     # 4. 计算布林带
     bollinger, bollinger_status = calculate_bollinger_bands(prices, 20, 2)
@@ -341,8 +373,8 @@ def calculate_gold_technical_analysis():
     else:
         rsi_score = 50  # 正常区间
 
-    # 综合评分 = RSI(33%) + MACD背离(33%) + 布林带(34%)
-    total_score = rsi_score * 0.33 + macd_score * 0.33 + bollinger_score * 0.34
+    # 综合评分 = RSI(25%) + MACD背离(25%) + 均线斜率(25%) + 布林带(25%)
+    total_score = rsi_score * 0.25 + macd_score * 0.25 + ma_slope_score * 0.25 + bollinger_score * 0.25
 
     result = {
         "symbol": "GOLD_TECH",
@@ -367,7 +399,9 @@ def calculate_gold_technical_analysis():
             "ma_slope_20": {
                 "slope": slope,
                 "angle_degrees": slope_angle,
-                "interpretation": f"正斜率上涨趋势，负斜率下跌趋势 (角度:{slope_angle}°)"
+                "pct_change_5d": slope_pct_change,
+                "score": ma_slope_score,
+                "interpretation": ma_slope_signal
             },
             "bollinger_20_2": {
                 "upper": bollinger['upper'] if bollinger else None,
@@ -383,14 +417,15 @@ def calculate_gold_technical_analysis():
         "综合评分": {
             "score": round(total_score, 1),
             "max_score": 100,
-            "RSI贡献": round(rsi_score * 0.33, 1),
-            "MACD贡献": round(macd_score * 0.33, 1),
-            "布林带贡献": round(bollinger_score * 0.34, 1),
+            "RSI贡献": round(rsi_score * 0.25, 1),
+            "MACD贡献": round(macd_score * 0.25, 1),
+            "均线斜率贡献": round(ma_slope_score * 0.25, 1),
+            "布林带贡献": round(bollinger_score * 0.25, 1),
             "verdict": "强势买入" if total_score >= 70 else ("弱势卖出" if total_score <= 30 else "中性观望")
         },
 
         "data_source": data_source,
-        "note": "综合评分权重: RSI(33%) + MACD背离(33%) + 布林带(34%)"
+        "note": "综合评分权重: RSI(25%) + MACD背离(25%) + 均线斜率(25%) + 布林带(25%)"
     }
 
     return result
