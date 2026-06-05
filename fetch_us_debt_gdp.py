@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
 获取美国国债总量、GDP总量及国债占GDP百分比
-Version: 1.0
+Version: 2.0
 
-数据来源: FRED API (联邦储备经济数据)
-- 国债总量: GFDEBTN (联邦政府债务总规模)
-- GDP总量: GDP (国内生产总值)
+数据来源:
+- FRED API (联邦储备经济数据) - 主数据源
+  - 国债总量: GFDEBTN (联邦政府债务总规模)
+  - GDP总量: GDP (国内生产总值)
+- TwelveData API - 辅助参考
+  - TLT (20+年期美国国债ETF)
 
 国债/GDP比率是衡量国家财政健康的重要指标
 """
@@ -15,6 +18,7 @@ import json
 from datetime import datetime
 
 FRED_API_KEY = "5829f98ab0ac4f79358f2f85d98e5e89"
+TWELVEDATA_API_KEY = "1a0c6578fc804d48b672bb7346d528a7"
 
 def fetch_fred_data(series_id):
     """从FRED API获取数据"""
@@ -33,16 +37,44 @@ def fetch_fred_data(series_id):
         print(f"获取{series_id}数据失败: {e}")
     return None
 
+def fetch_tlt_data():
+    """从TwelveData API获取TLT国债ETF数据"""
+    try:
+        url = f"https://api.twelvedata.com/quote?symbol=TLT&apikey={TWELVEDATA_API_KEY}"
+        with urllib.request.urlopen(url, timeout=30) as resp:
+            data = json.loads(resp.read().decode())
+            if 'status' not in data or data['status'] != 'error':
+                return {
+                    "symbol": "TLT",
+                    "name": data.get('name', 'iShares 20+ Year Treasury Bond ETF'),
+                    "price": float(data.get('close', 0)),
+                    "change": float(data.get('change', 0)),
+                    "percent_change": float(data.get('percent_change', 0)),
+                    "high": float(data.get('high', 0)),
+                    "low": float(data.get('low', 0)),
+                    "volume": int(data.get('volume', 0)),
+                    "datetime": data.get('datetime', ''),
+                    "previous_close": float(data.get('previous_close', 0)),
+                    "fifty_two_week_high": float(data.get('fifty_two_week', {}).get('high', 0)),
+                    "fifty_two_week_low": float(data.get('fifty_two_week', {}).get('low', 0))
+                }
+    except Exception as e:
+        print(f"获取TLT数据失败: {e}")
+    return None
+
 
 def fetch_us_debt_gdp():
     """获取美国国债总量、GDP总量并计算比率"""
     print("正在获取美国国债和GDP数据...")
 
-    # 获取国债总量 (单位: 百万美元)
+    # 从FRED获取国债总量 (单位: 百万美元)
     debt_data = fetch_fred_data("GFDEBTN")
 
-    # 获取GDP总量 (单位: 十亿美元)
+    # 从FRED获取GDP总量 (单位: 十亿美元)
     gdp_data = fetch_fred_data("GDP")
+
+    # 从TwelveData获取TLT国债ETF作为辅助参考
+    tlt_data = fetch_tlt_data()
 
     # 构建结果
     result = {
@@ -95,6 +127,21 @@ def fetch_us_debt_gdp():
 
         result["data_source"] = "FRED API"
         result["source_url"] = "https://fred.stlouisfed.org/"
+
+        # 添加TLT国债ETF数据作为辅助参考
+        if tlt_data:
+            result["tlt_etf_reference"] = {
+                "symbol": tlt_data["symbol"],
+                "name": tlt_data["name"],
+                "price": tlt_data["price"],
+                "change": tlt_data["change"],
+                "percent_change": tlt_data["percent_change"],
+                "volume": tlt_data["volume"],
+                "datetime": tlt_data["datetime"],
+                "52w_high": tlt_data["fifty_two_week_high"],
+                "52w_low": tlt_data["fifty_two_week_low"],
+                "note": "TLT是20+年期美国国债ETF，价格走势反映市场对长期国债的预期"
+            }
     else:
         if not debt_data:
             result["error"] = "无法获取国债数据"
@@ -106,7 +153,7 @@ def fetch_us_debt_gdp():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("美国国债与GDP数据 (FRED API)")
+    print("美国国债与GDP数据")
     print("=" * 60)
     data = fetch_us_debt_gdp()
     print(json.dumps(data, indent=2, ensure_ascii=False))
