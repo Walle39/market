@@ -194,147 +194,99 @@ def calculate_s_macro():
     }
 
     # 1. 央行购金代理 (30%)
-    try:
-        cb_gold_data = fetch_central_bank_gold_quarterly()
-        if cb_gold_data and 'total_4_quarters' in cb_gold_data:
-            total_4q = cb_gold_data['total_4_quarters']
-            enc, desc = encode_central_bank_gold(total_4q)
-            result['factors']['central_bank_gold'] = {
-                'total_4q': total_4q,
-                'encoding': enc,
-                'description': desc
-            }
-            result['encoding']['central_bank_gold'] = enc
-        else:
-            result['factors']['central_bank_gold'] = {'error': '数据不可用'}
-            result['encoding']['central_bank_gold'] = 0
-    except Exception as e:
-        print(f"央行购金数据获取失败: {e}")
-        result['factors']['central_bank_gold'] = {'error': str(e)}
-        result['encoding']['central_bank_gold'] = 0
+    cb_gold_data = fetch_central_bank_gold_quarterly()
+    if not cb_gold_data or 'total_4_quarters' not in cb_gold_data:
+        raise RuntimeError("无法获取央行购金数据")
+    total_4q = cb_gold_data['total_4_quarters']
+    enc, desc = encode_central_bank_gold(total_4q)
+    result['factors']['central_bank_gold'] = {
+        'total_4q': total_4q,
+        'encoding': enc,
+        'description': desc
+    }
+    result['encoding']['central_bank_gold'] = enc
 
     # 2. M2高频预估 (25%)
-    try:
-        m2_data = fetch_fred_m2()
-        if m2_data and 'yoy_change_percent' in m2_data:
-            yoy = m2_data['yoy_change_percent']
-            enc, desc = encode_m2_yoy(yoy)
-            result['factors']['m2'] = {
-                'yoy_change': yoy,
-                'encoding': enc,
-                'description': desc
-            }
-            result['encoding']['m2'] = enc
-        else:
-            result['factors']['m2'] = {'error': '数据不可用'}
-            result['encoding']['m2'] = 0
-    except Exception as e:
-        print(f"M2数据获取失败: {e}")
-        result['factors']['m2'] = {'error': str(e)}
-        result['encoding']['m2'] = 0
+    m2_data = fetch_fred_m2()
+    if not m2_data or 'yoy_change_percent' not in m2_data:
+        raise RuntimeError("无法获取M2数据")
+    yoy = m2_data['yoy_change_percent']
+    enc, desc = encode_m2_yoy(yoy)
+    result['factors']['m2'] = {
+        'yoy_change': yoy,
+        'encoding': enc,
+        'description': desc
+    }
+    result['encoding']['m2'] = enc
 
     # 3. 债务/GDP (15%)
-    try:
-        debt_gdp_data = fetch_us_debt_gdp()
-        if debt_gdp_data and 'debt_to_gdp_ratio' in debt_gdp_data:
-            ratio = debt_gdp_data['debt_to_gdp_ratio']['value']
-            enc, desc = encode_debt_gdp(ratio)
-            result['factors']['debt_gdp'] = {
-                'ratio': ratio,
-                'encoding': enc,
-                'description': desc
-            }
-            result['encoding']['debt_gdp'] = enc
-        else:
-            result['factors']['debt_gdp'] = {'error': '数据不可用'}
-            result['encoding']['debt_gdp'] = 0
-    except Exception as e:
-        print(f"债务/GDP数据获取失败: {e}")
-        result['factors']['debt_gdp'] = {'error': str(e)}
-        result['encoding']['debt_gdp'] = 0
+    debt_gdp_data = fetch_us_debt_gdp()
+    if not debt_gdp_data or 'debt_to_gdp_ratio' not in debt_gdp_data:
+        raise RuntimeError("无法获取债务/GDP数据")
+    ratio = debt_gdp_data['debt_to_gdp_ratio']['value']
+    enc, desc = encode_debt_gdp(ratio)
+    result['factors']['debt_gdp'] = {
+        'ratio': ratio,
+        'encoding': enc,
+        'description': desc
+    }
+    result['encoding']['debt_gdp'] = enc
 
     # 4. Fed量化预期差 (15%)
-    # 尝试verifiedinvesting.com获取，与TIPS比较，不一致时提示手动输入
-    try:
-        # 获取TIPS值
-        bond_data = fetch_bond_data()
-        tips_value = None
-        if bond_data and 'data' in bond_data:
-            if 'tips_10y' in bond_data['data']:
-                tips_value = bond_data['data']['tips_10y']['latest']['value']
+    # 获取TIPS值
+    bond_data = fetch_bond_data()
+    tips_value = None
+    if bond_data and 'data' in bond_data:
+        if 'tips_10y' in bond_data['data']:
+            tips_value = bond_data['data']['tips_10y']['latest']['value']
+    if tips_value is None:
+        raise RuntimeError("无法获取TIPS数据")
 
-        # 获取Fed预期（手动输入或TIPS备用）
-        fed_code, input_source = get_fed_expectation_input()
+    # 获取Fed预期（手动输入或TIPS）
+    fed_code, input_source = get_fed_expectation_input()
 
-        if fed_code is not None:
-            # 使用手动输入或环境变量
-            enc, desc = encode_fed_expectation_manual(fed_code)
-            result['factors']['fed_expectation'] = {
-                'source': input_source,
-                'manual_code': fed_code,
-                'encoding': enc,
-                'description': desc
-            }
-            result['encoding']['fed_expectation'] = enc
-        else:
-            # 使用TIPS备用
-            enc, desc = encode_fed_expectation_tips(tips_value)
-            result['factors']['fed_expectation'] = {
-                'source': 'TIPS备用',
-                'tips_value': tips_value,
-                'encoding': enc,
-                'description': desc
-            }
-            result['encoding']['fed_expectation'] = enc
-    except Exception as e:
-        print(f"Fed预期数据获取失败: {e}")
-        result['factors']['fed_expectation'] = {'error': str(e)}
-        result['encoding']['fed_expectation'] = 0
-
-    # 5. 10Y TIPS实际利率 (10%)
-    try:
-        if 'tips_value' not in result['factors']['fed_expectation']:
-            tips_value = None
-        else:
-            tips_value = result['factors']['fed_expectation']['tips_value']
-
-        if tips_value is None:
-            bond_data = fetch_bond_data()
-            if bond_data and 'data' in bond_data:
-                if 'tips_10y' in bond_data['data']:
-                    tips_value = bond_data['data']['tips_10y']['latest']['value']
-
-        enc, desc = encode_tips(tips_value)
-        result['factors']['tips'] = {
+    if fed_code is not None:
+        # 使用手动输入或环境变量
+        enc, desc = encode_fed_expectation_manual(fed_code)
+        result['factors']['fed_expectation'] = {
+            'source': input_source,
+            'manual_code': fed_code,
+            'encoding': enc,
+            'description': desc
+        }
+        result['encoding']['fed_expectation'] = enc
+    else:
+        # 使用TIPS
+        enc, desc = encode_fed_expectation_tips(tips_value)
+        result['factors']['fed_expectation'] = {
+            'source': 'TIPS',
             'tips_value': tips_value,
             'encoding': enc,
             'description': desc
         }
-        result['encoding']['tips'] = enc
-    except Exception as e:
-        print(f"TIPS数据获取失败: {e}")
-        result['factors']['tips'] = {'error': str(e)}
-        result['encoding']['tips'] = 0
+        result['encoding']['fed_expectation'] = enc
+
+    # 5. 10Y TIPS实际利率 (10%)
+    enc, desc = encode_tips(tips_value)
+    result['factors']['tips'] = {
+        'tips_value': tips_value,
+        'encoding': enc,
+        'description': desc
+    }
+    result['encoding']['tips'] = enc
 
     # 6. 美元指数 DXY (5%)
-    try:
-        dxy_data = fetch_dxy_index()
-        if dxy_data and 'price' in dxy_data:
-            dxy_value = dxy_data['price']
-            enc, desc = encode_dxy(dxy_value)
-            result['factors']['dxy'] = {
-                'dxy_value': dxy_value,
-                'encoding': enc,
-                'description': desc
-            }
-            result['encoding']['dxy'] = enc
-        else:
-            result['factors']['dxy'] = {'error': '数据不可用'}
-            result['encoding']['dxy'] = 0
-    except Exception as e:
-        print(f"DXY数据获取失败: {e}")
-        result['factors']['dxy'] = {'error': str(e)}
-        result['encoding']['dxy'] = 0
+    dxy_data = fetch_dxy_index()
+    if not dxy_data or 'price' not in dxy_data:
+        raise RuntimeError("无法获取DXY数据")
+    dxy_value = dxy_data['price']
+    enc, desc = encode_dxy(dxy_value)
+    result['factors']['dxy'] = {
+        'dxy_value': dxy_value,
+        'encoding': enc,
+        'description': desc
+    }
+    result['encoding']['dxy'] = enc
 
     # 计算加权编码和
     weights = result['weights']

@@ -28,7 +28,7 @@ def score_rsi(rsi_value):
     RSI ≥ 70 → 0分 (超买)
     """
     if rsi_value is None:
-        return 50, "数据不可用"
+        raise RuntimeError("RSI数据不可用")
 
     if rsi_value <= 30:
         return 100, f"RSI超卖 ({rsi_value:.2f} ≤ 30)"
@@ -48,7 +48,7 @@ def score_macd_divergence(divergence_score):
     无背离 → 50分
     """
     if divergence_score is None:
-        return 50, "数据不可用"
+        raise RuntimeError("MACD数据不可用")
 
     if divergence_score >= 80:
         return 100, "MACD底背离 - 可能上涨信号"
@@ -65,7 +65,7 @@ def score_ma_slope(daily_pct_change):
     线性插值
     """
     if daily_pct_change is None:
-        return 50, "数据不可用"
+        raise RuntimeError("均线数据不可用")
 
     if daily_pct_change >= 0.5:
         return 100, f"强势上涨趋势 (日涨幅{daily_pct_change:.3f}% ≥ +0.5%)"
@@ -85,7 +85,7 @@ def score_bollinger(bollinger_score):
     其他 → 50分
     """
     if bollinger_score is None:
-        return 50, "数据不可用"
+        raise RuntimeError("布林带数据不可用")
 
     if bollinger_score >= 80:
         return 100, "触下轨且带宽扩大 - 超卖信号"
@@ -116,74 +116,64 @@ def calculate_k_trend():
         "interpretation": None
     }
 
-    try:
-        # 获取技术指标数据
-        tech_data = calculate_gold_technical_analysis()
+    # 获取技术指标数据
+    tech_data = calculate_gold_technical_analysis()
 
-        if 'error' in tech_data:
-            result['error'] = tech_data['error']
-            return result
+    if 'error' in tech_data:
+        raise RuntimeError(f"技术指标获取失败: {tech_data['error']}")
 
-        indicators = tech_data.get('indicators', {})
+    indicators = tech_data.get('indicators', {})
 
-        # 1. RSI (30%)
-        rsi_value = indicators.get('rsi_14', {}).get('value')
-        score, desc = score_rsi(rsi_value)
-        result['factors']['rsi'] = {
-            'value': rsi_value,
-            'score': score,
-            'description': desc
-        }
-        result['scores']['rsi'] = score
+    # 1. RSI (30%)
+    rsi_value = indicators.get('rsi_14', {}).get('value')
+    score, desc = score_rsi(rsi_value)
+    result['factors']['rsi'] = {
+        'value': rsi_value,
+        'score': score,
+        'description': desc
+    }
+    result['scores']['rsi'] = score
 
-        # 2. MACD背离 (25%)
-        macd_score = indicators.get('macd_12_26_9', {}).get('divergence_score')
-        score, desc = score_macd_divergence(macd_score)
-        result['factors']['macd_divergence'] = {
-            'score': macd_score,
-            'weighted_score': score,
-            'description': desc
-        }
-        result['scores']['macd_divergence'] = score
+    # 2. MACD背离 (25%)
+    macd_score = indicators.get('macd_12_26_9', {}).get('divergence_score')
+    score, desc = score_macd_divergence(macd_score)
+    result['factors']['macd_divergence'] = {
+        'score': macd_score,
+        'description': desc
+    }
+    result['scores']['macd_divergence'] = score
 
-        # 3. 均线斜率 (25%)
-        # 计算日涨幅
-        ma_data = indicators.get('ma_slope_20', {})
-        pct_change_5d = ma_data.get('pct_change_5d', 0)
-        daily_pct_change = pct_change_5d / 5 if pct_change_5d else 0
-        score, desc = score_ma_slope(daily_pct_change)
-        result['factors']['ma_slope'] = {
-            'pct_change_5d': pct_change_5d,
-            'daily_pct_change': daily_pct_change,
-            'score': score,
-            'description': desc
-        }
-        result['scores']['ma_slope'] = score
+    # 3. 均线斜率 (25%)
+    ma_data = indicators.get('ma_slope_20', {})
+    pct_change_5d = ma_data.get('pct_change_5d', 0)
+    daily_pct_change = pct_change_5d / 5 if pct_change_5d else 0
+    score, desc = score_ma_slope(daily_pct_change)
+    result['factors']['ma_slope'] = {
+        'pct_change_5d': pct_change_5d,
+        'daily_pct_change': daily_pct_change,
+        'score': score,
+        'description': desc
+    }
+    result['scores']['ma_slope'] = score
 
-        # 4. 布林带 (20%)
-        bollinger_score = indicators.get('bollinger_20_2', {}).get('score')
-        score, desc = score_bollinger(bollinger_score)
-        result['factors']['bollinger'] = {
-            'score': bollinger_score,
-            'weighted_score': score,
-            'description': desc
-        }
-        result['scores']['bollinger'] = score
-
-    except Exception as e:
-        print(f"技术指标数据获取失败: {e}")
-        result['error'] = str(e)
-        return result
+    # 4. 布林带 (20%)
+    bollinger_score = indicators.get('bollinger_20_2', {}).get('score')
+    score, desc = score_bollinger(bollinger_score)
+    result['factors']['bollinger'] = {
+        'score': bollinger_score,
+        'description': desc
+    }
+    result['scores']['bollinger'] = score
 
     # 计算加权总分 T
     weights = result['weights']
     scores = result['scores']
 
     t_score = (
-        scores.get('rsi', 50) * weights['rsi'] +
-        scores.get('macd_divergence', 50) * weights['macd_divergence'] +
-        scores.get('ma_slope', 50) * weights['ma_slope'] +
-        scores.get('bollinger', 50) * weights['bollinger']
+        scores['rsi'] * weights['rsi'] +
+        scores['macd_divergence'] * weights['macd_divergence'] +
+        scores['ma_slope'] * weights['ma_slope'] +
+        scores['bollinger'] * weights['bollinger']
     )
 
     result['t_score'] = round(t_score, 2)

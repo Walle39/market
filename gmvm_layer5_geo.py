@@ -23,43 +23,41 @@ from fetch_crude_oil import fetch_from_sina
 from fetch_usa_cpi import fetch_usa_cpi
 from fetch_us_bond_tips import fetch_bond_data
 
-def get_k_geo(gpr_3month_avg, oil_price, cpi_yoy, fed_expectation_code):
+def get_k_geo(gpr_3month_avg, oil_price, cpi_yoy, fed_code):
     """
     根据GPR、油价、CPI、Fed预期确定K_geo
-
-    GPR连续3月  | 布伦特原油 | CPI同比 | Fed预期差 | K_geo | 冲突范式
-    -----------|-----------|---------|-----------|-------|----------
-    > 120      | > $120    | > 4%    | 不管      | 1.20  | 结构性供给冲击
-    > 120      | $100-120  | 任意    | = -1(鹰派)| 0.95  | 利率压制型
-    > 120      | $100-120  | 任意    | 0或+1     | 1.10  | 情绪利多
-    >100 ≤120  | < $100    | 任意    | 任意      | 1.05  | 日常避险溢价
-    >100 ≤120  | ≥ $100    | 任意    | = -1      | 0.98  | 轻度利率压制
-    ≤ 100      | —         | —       | —         | 1.00  | 无显著地缘影响
     """
+    if gpr_3month_avg is None:
+        raise RuntimeError("GPR数据不可用")
+
     # GPR <= 100: 无显著地缘影响
     if gpr_3month_avg <= 100:
         return 1.00, "无显著地缘影响"
 
-    # GPR > 120
+    # GPR > 120:
     if gpr_3month_avg > 120:
+        # > $120: 结构性供给冲击（滞胀型）
         if oil_price > 120:
             return 1.20, "结构性供给冲击（滞胀型）"
-        elif oil_price >= 100:
-            if fed_expectation_code == -1:
-                return 0.95, "利率压制型"
+        # $100~$120:
+        elif 100 <= oil_price <= 120:
+            # Fed预期: 鹰派 → 0.95
+            if fed_code == -1:
+                return 0.95, "利率压制型（油价较高但Fed鹰派）"
+            # 其他 → 1.10
             else:
                 return 1.10, "情绪利多，无利率压制"
+        # < $100:
         else:
-            return 1.10, "高GPR但油价正常"
+            return 1.10, "高GPR但油价较低"
 
-    # 100 < GPR <= 120
-    if oil_price < 100:
+    # 100 < GPR <= 120:
+    # Fed预期: 鹰派 → 0.98
+    if fed_code == -1:
+        return 0.98, "轻度利率压制"
+    # 其他 → 1.05
+    else:
         return 1.05, "日常避险溢价"
-    else:  # oil_price >= 100
-        if fed_expectation_code == -1:
-            return 0.98, "轻度利率压制"
-        else:
-            return 1.05, "中等烈度地缘紧张"
 
 def calculate_k_geo():
     """计算地缘条件化乘数 K_geo"""
@@ -75,93 +73,62 @@ def calculate_k_geo():
         "paradigm": None
     }
 
-    # 1. 获取GPR指数（连续3月平均）
-    gpr_value = None
-    gpr_3month_avg = None
-    try:
-        gpr_data = fetch_gpr()
-        if gpr_data and 'gpr' in gpr_data:
-            gpr_value = gpr_data['gpr']
-            # 假设GPR月度数据，如果获取的是单月值，暂用该值作为3月平均的估算
-            # 实际应该取连续3月均值
-            gpr_3month_avg = gpr_value  # 简化处理
-            result['factors']['gpr'] = {
-                'latest': gpr_value,
-                'gpr_3month_avg': gpr_3month_avg,
-                'date': gpr_data.get('date'),
-                'note': '使用最新GPR值作为3月均值估算'
-            }
-        else:
-            result['factors']['gpr'] = {'error': '无法获取GPR数据'}
-    except Exception as e:
-        print(f"GPR数据获取失败: {e}")
-        result['factors']['gpr'] = {'error': str(e)}
+    # 1. 获取GPR指数
+    gpr_data = fetch_gpr()
+    if not gpr_data or 'gpr' not in gpr_data:
+        raise RuntimeError("无法获取GPR数据")
+    gpr_value = gpr_data['gpr']
+    result['factors']['gpr'] = {
+        'value': gpr_value,
+        'source': 'Matteo Iacoviello'
+    }
 
     # 2. 获取布伦特原油价格
+    oil_data = fetch_from_sina()
     oil_price = None
-    try:
-        oil_data = fetch_from_sina()
-        if oil_data and 'price' in oil_data:
-            oil_price = oil_data['price']
-            result['factors']['crude_oil'] = {
-                'price': oil_price,
-                'source': '新浪财经 hf_OIL'
-            }
-        else:
-            result['factors']['crude_oil'] = {'error': '无法获取油价数据'}
-    except Exception as e:
-        print(f"油价数据获取失败: {e}")
-        result['factors']['crude_oil'] = {'error': str(e)}
+    if oil_data and 'price' in oil_data:
+        oil_price = oil_data['price']
+        result['factors']['oil'] = {
+            'price': oil_price,
+            'source': '新浪财经'
+        }
+    if oil_price is None:
+        raise RuntimeError("无法获取原油价格数据")
 
     # 3. 获取CPI同比
+    cpi_data = fetch_usa_cpi()
     cpi_yoy = None
-    try:
-        cpi_data = fetch_usa_cpi()
-        if cpi_data and 'current_value' in cpi_data:
-            cpi_yoy = cpi_data['current_value']
-            result['factors']['cpi'] = {
-                'yoy': cpi_yoy,
-                'time': cpi_data.get('time'),
-                'source': 'AkShare'
-            }
-        else:
-            result['factors']['cpi'] = {'error': '无法获取CPI数据'}
-    except Exception as e:
-        print(f"CPI数据获取失败: {e}")
-        result['factors']['cpi'] = {'error': str(e)}
-
-    # 4. 获取Fed预期差
-    fed_expectation_code = 0  # 默认中性
-    try:
-        bond_data = fetch_bond_data()
-        tips_value = None
-        if bond_data and 'data' in bond_data:
-            if 'tips_10y' in bond_data['data']:
-                tips_value = bond_data['data']['tips_10y']['latest']['value']
-
-        if tips_value is not None:
-            if tips_value < -0.5:
-                fed_expectation_code = 1  # 鸽派
-            elif tips_value > 1.5:
-                fed_expectation_code = -1  # 鹰派
-            else:
-                fed_expectation_code = 0  # 中性
-
-        result['factors']['fed_expectation'] = {
-            'tips_value': tips_value,
-            'code': fed_expectation_code,
-            'description': {1: "鸽派(降息)", 0: "中性", -1: "鹰派(加息)"}.get(fed_expectation_code, "未知")
+    if cpi_data and 'latest' in cpi_data:
+        cpi_yoy = cpi_data['latest']
+        result['factors']['cpi'] = {
+            'yoy': cpi_yoy,
+            'source': 'FRED/BLS'
         }
-    except Exception as e:
-        print(f"Fed预期数据获取失败: {e}")
-        result['factors']['fed_expectation'] = {'error': str(e)}
+
+    # 4. 获取Fed预期（使用TIPS作为代理）
+    bond_data = fetch_bond_data()
+    fed_code = 0
+    if bond_data and 'data' in bond_data:
+        if 'tips_10y' in bond_data['data']:
+            tips_val = bond_data['data']['tips_10y']['latest']['value']
+            if tips_val < -0.5:
+                fed_code = 1
+            elif tips_val > 1.5:
+                fed_code = -1
+            else:
+                fed_code = 0
+            result['factors']['fed_expectation'] = {
+                'code': fed_code,
+                'tips_value': tips_val,
+                'source': 'TIPS代理'
+            }
 
     # 计算K_geo
     k_geo, paradigm = get_k_geo(
-        gpr_3month_avg,
-        oil_price,
-        cpi_yoy,
-        fed_expectation_code
+        gpr_3month_avg=gpr_value,
+        oil_price=oil_price,
+        cpi_yoy=cpi_yoy,
+        fed_code=fed_code
     )
 
     result['k_geo'] = round(k_geo, 4)
@@ -169,13 +136,13 @@ def calculate_k_geo():
 
     # 解读
     if k_geo >= 1.15:
-        result['interpretation'] = "地缘利好黄金 - 结构性冲击"
+        result['interpretation'] = "地缘极强利多黄金"
     elif k_geo >= 1.05:
-        result['interpretation'] = "地缘轻微利好"
-    elif k_geo >= 0.98:
-        result['interpretation'] = "地缘影响中性"
+        result['interpretation'] = "地缘轻微利多"
+    elif k_geo >= 0.95:
+        result['interpretation'] = "地缘中性或轻微压制"
     else:
-        result['interpretation'] = "地缘利空黄金 - 利率压制"
+        result['interpretation'] = "地缘利空黄金"
 
     return result
 

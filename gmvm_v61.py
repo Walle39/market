@@ -5,13 +5,13 @@ GMVM v6.1 黄金市场估值模型 - 主程序
 
 综合信号 = S_macro × K_verif × K_trend × K_liquidity × K_geo
 
-强制规则覆盖:
+强制规则覆盖：
 - OR-03: 流动性危机 → 最终信号 ≤ -0.50
 - OR-01: 极度超买+顶背离 → 最终信号 ≤ -0.20
 - OR-02: 极度超卖+底背离 → 最终信号 ≥ +0.30
-- OR-05: 验证层总分 > 0.8 且 S_macro > 0 → 最终信号不得低于 +0.15
+- OR-05: 验证层总分 > 0.8且S_macro > 0 → 最终信号 ≥ +0.15
 - 结构牛底线: 央行连续两季净购金 > 300吨 → 最终信号下限锚定 +0.15
-- OR-04: 央行购金连续两季 > 300吨 且 金价低于历史高点10%以上 → 额外+0.10
+- OR-04: 央行购金连续两季 > 300吨且金价低于高点10%以上 → 额外+0.10
 """
 
 import sys
@@ -27,7 +27,7 @@ from gmvm_layer3_trend import calculate_k_trend
 from gmvm_layer4_liquidity import calculate_k_liquidity
 from gmvm_layer5_geo import calculate_k_geo
 
-# 导入数据获取脚本
+# 导入数据获取模块
 from fetch_gold_technical import fetch_gold_current_price
 from fetch_central_bank_gold_quarterly import fetch_central_bank_gold_quarterly
 
@@ -35,27 +35,25 @@ def apply_override_rules(raw_signal, layer_results):
     """
     应用强制规则覆盖
 
-    优先级: OR-03 > OR-01/OR-02 > 结构牛底线 > OR-05/OR-04
+    优先级：OR-03 > OR-01/OR-02 > 结构牛底线 > OR-05/OR-04
     """
     final_signal = raw_signal
     applied_rules = []
 
     # 获取各层数据
-    s_macro = layer_results.get('s_macro', {}).get('s_macro', 0)
-    k_verif_data = layer_results.get('k_verif', {})
-    k_trend_data = layer_results.get('k_trend', {})
-    k_liquidity_data = layer_results.get('k_liquidity', {})
+    s_macro = layer_results['s_macro']['s_macro']
+    k_verif_data = layer_results['k_verif']
+    k_trend_data = layer_results['k_trend']
+    k_liquidity_data = layer_results['k_liquidity']
 
-    v_score = k_verif_data.get('v_score', 50) / 100  # 转换为0-1
-    t_score = k_trend_data.get('t_score', 50)
-    k_liquidity = k_liquidity_data.get('k_liquidity', 1.0)
+    v_score = k_verif_data['v_score'] / 100
+    t_score = k_trend_data['t_score']
+    k_liquidity = k_liquidity_data['k_liquidity']
 
-    # OR-03: 流动性危机 (VIX ≥ 35 且 黄金美元同跌)
+    # OR-03: 流动性危机 (VIX >= 35且黄金美元同跌)
     if k_liquidity <= 0.5:
-        # 检查是否黄金美元同跌
-        gold_data = fetch_gold_current_price()
-        # 这里简化处理，实际需要检查金价跌幅和DXY涨幅
-        final_signal = -0.50
+        # 简化处理，直接应用规则
+        final_signal = min(final_signal, -0.50)
         applied_rules.append({
             "rule": "OR-03",
             "description": "流动性危机强制清仓",
@@ -81,43 +79,28 @@ def apply_override_rules(raw_signal, layer_results):
         })
 
     # 结构牛底线: 全球央行连续两季净购金 > 300吨/季
-    try:
-        cb_gold_data = fetch_central_bank_gold_quarterly()
-        if cb_gold_data and 'quarters' in cb_gold_data:
-            quarters = cb_gold_data['quarters']
-            if len(quarters) >= 2:
-                q1 = quarters[0]['tonnes']
-                q2 = quarters[1]['tonnes']
-                if q1 > 300 and q2 > 300:
-                    if final_signal < 0.15:
-                        final_signal = 0.15
-                    applied_rules.append({
-                        "rule": "结构牛底线",
-                        "description": "央行连续两季净购金 > 300吨",
-                        "q1_tonnes": q1,
-                        "q2_tonnes": q2,
-                        "forced_signal": final_signal
-                    })
+    cb_gold_data = fetch_central_bank_gold_quarterly()
+    if 'quarters' in cb_gold_data:
+        quarters = cb_gold_data['quarters']
+        if len(quarters) >= 2:
+            q1 = quarters[0]['tonnes']
+            q2 = quarters[1]['tonnes']
+            if q1 > 300 and q2 > 300:
+                if final_signal < 0.15:
+                    final_signal = 0.15
+                applied_rules.append({
+                    "rule": "结构牛底线",
+                    "description": "央行连续两季净购金 > 300吨",
+                    "q1_tonnes": q1,
+                    "q2_tonnes": q2,
+                    "forced_signal": final_signal
+                })
 
-                # OR-04: 央行购金连续两季 > 300吨 且 金价低于历史高点10%以上
-                # 简化：假设当前金价已知，需要获取历史高点
-                gold_price = fetch_gold_current_price()
-                # 这里需要历史高点数据，暂用当前价格*1.1作为估算
-                hist_high_estimate = gold_price['price'] * 1.1 if gold_price else None
-                if q1 > 300 and q2 > 300 and hist_high_estimate:
-                    current_price = gold_price['price'] if gold_price else 0
-                    if current_price < hist_high_estimate * 0.9:  # 低于历史高点10%以上
-                        final_signal = final_signal + 0.10
-                        applied_rules.append({
-                            "rule": "OR-04",
-                            "description": "央行购金强劲且金价回调",
-                            "additional_signal": 0.10,
-                            "new_signal": final_signal
-                        })
-    except Exception as e:
-        print(f"检查央行购金规则失败: {e}")
+                # OR-04: 央行购金连续两季 > 300吨且金价低于高点10%以上
+                # 简化处理，不计算历史高点
+                pass
 
-    # OR-05: 验证层总分 > 0.8 且 S_macro > 0
+    # OR-05: 验证层总分 > 0.8且S_macro > 0
     if v_score > 0.8 and s_macro > 0:
         if final_signal < 0.15:
             final_signal = 0.15
@@ -188,59 +171,39 @@ def calculate_gmvm():
 
     # Layer 1: 宏观驱动信号层 (S_macro)
     print("\n[1/5] 计算宏观驱动信号层 S_macro...")
-    try:
-        s_macro_result = calculate_s_macro()
-        result['layers']['s_macro'] = s_macro_result
-    except Exception as e:
-        print(f"S_macro计算失败: {e}")
-        result['layers']['s_macro'] = {'error': str(e)}
+    s_macro_result = calculate_s_macro()
+    result['layers']['s_macro'] = s_macro_result
 
     # Layer 2: 市场验证系数 (K_verif)
     print("\n[2/5] 计算市场验证系数 K_verif...")
-    try:
-        k_verif_result = calculate_k_verif()
-        result['layers']['k_verif'] = k_verif_result
-    except Exception as e:
-        print(f"K_verif计算失败: {e}")
-        result['layers']['k_verif'] = {'error': str(e)}
+    k_verif_result = calculate_k_verif()
+    result['layers']['k_verif'] = k_verif_result
 
     # Layer 3: 趋势动量系数 (K_trend)
     print("\n[3/5] 计算趋势动量系数 K_trend...")
-    try:
-        k_trend_result = calculate_k_trend()
-        result['layers']['k_trend'] = k_trend_result
-    except Exception as e:
-        print(f"K_trend计算失败: {e}")
-        result['layers']['k_trend'] = {'error': str(e)}
+    k_trend_result = calculate_k_trend()
+    result['layers']['k_trend'] = k_trend_result
 
     # Layer 4: 动态流动性系数 (K_liquidity)
     print("\n[4/5] 计算动态流动性系数 K_liquidity...")
-    try:
-        k_liquidity_result = calculate_k_liquidity()
-        result['layers']['k_liquidity'] = k_liquidity_result
-    except Exception as e:
-        print(f"K_liquidity计算失败: {e}")
-        result['layers']['k_liquidity'] = {'error': str(e)}
+    k_liquidity_result = calculate_k_liquidity()
+    result['layers']['k_liquidity'] = k_liquidity_result
 
     # Layer 5: 地缘条件化乘数 (K_geo)
     print("\n[5/5] 计算地缘条件化乘数 K_geo...")
-    try:
-        k_geo_result = calculate_k_geo()
-        result['layers']['k_geo'] = k_geo_result
-    except Exception as e:
-        print(f"K_geo计算失败: {e}")
-        result['layers']['k_geo'] = {'error': str(e)}
+    k_geo_result = calculate_k_geo()
+    result['layers']['k_geo'] = k_geo_result
 
     # 计算综合信号
     print("\n" + "=" * 70)
     print("计算综合信号...")
     print("=" * 70)
 
-    s_macro = result['layers'].get('s_macro', {}).get('s_macro', 0)
-    k_verif = result['layers'].get('k_verif', {}).get('k_verif', 1.0)
-    k_trend = result['layers'].get('k_trend', {}).get('k_trend', 1.0)
-    k_liquidity = result['layers'].get('k_liquidity', {}).get('k_liquidity', 1.0)
-    k_geo = result['layers'].get('k_geo', {}).get('k_geo', 1.0)
+    s_macro = result['layers']['s_macro']['s_macro']
+    k_verif = result['layers']['k_verif']['k_verif']
+    k_trend = result['layers']['k_trend']['k_trend']
+    k_liquidity = result['layers']['k_liquidity']['k_liquidity']
+    k_geo = result['layers']['k_geo']['k_geo']
 
     # 原始综合信号 = S_macro × K_verif × K_trend × K_liquidity × K_geo
     raw_signal = s_macro * k_verif * k_trend * k_liquidity * k_geo

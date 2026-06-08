@@ -30,7 +30,7 @@ def score_etf_holding(change_4w_pct):
     线性插值
     """
     if change_4w_pct is None:
-        return 50, "数据不可用"
+        raise RuntimeError("ETF数据不可用")
 
     if change_4w_pct >= 2:
         return 100, f"ETF大幅增仓 ({change_4w_pct:.2f}% ≥ +2%)"
@@ -50,7 +50,7 @@ def score_gold_silver_ratio(ratio):
     线性插值
     """
     if ratio is None:
-        return 50, "数据不可用"
+        raise RuntimeError("金银比数据不可用")
 
     if ratio <= 60:
         return 100, f"金银比极低 ({ratio:.2f} ≤ 60) - 白银相对便宜"
@@ -69,8 +69,10 @@ def score_gold_aisc_ratio(gold_price, aisc):
     比率 ≥ 2.5 → 0分 (金价远离成本，估值极高)
     线性插值
     """
-    if gold_price is None or aisc is None:
-        return 50, "数据不可用"
+    if gold_price is None:
+        raise RuntimeError("金价数据不可用")
+    if aisc is None:
+        raise RuntimeError("AISC数据不可用")
 
     ratio = gold_price / aisc
 
@@ -106,79 +108,62 @@ def calculate_k_verif():
     }
 
     # 1. ETF持仓变化 (40%)
-    try:
-        etf_data = fetch_gold_holdings()
-        if etf_data and 'latest' in etf_data and 'change_4w_percent' in etf_data['latest']:
-            change_4w = etf_data['latest']['change_4w_percent']
-            score, desc = score_etf_holding(change_4w)
-            result['factors']['etf_holding'] = {
-                'change_4w_percent': change_4w,
-                'score': score,
-                'description': desc
-            }
-            result['scores']['etf_holding'] = score
-        else:
-            result['factors']['etf_holding'] = {'error': '数据不可用'}
-            result['scores']['etf_holding'] = 50
-    except Exception as e:
-        print(f"ETF持仓数据获取失败: {e}")
-        result['factors']['etf_holding'] = {'error': str(e)}
-        result['scores']['etf_holding'] = 50
+    etf_data = fetch_gold_holdings()
+    if not etf_data or 'latest' not in etf_data or 'change_4w_percent' not in etf_data['latest']:
+        raise RuntimeError("无法获取ETF持仓数据")
+    change_4w = etf_data['latest']['change_4w_percent']
+    score, desc = score_etf_holding(change_4w)
+    result['factors']['etf_holding'] = {
+        'change_4w_percent': change_4w,
+        'score': score,
+        'description': desc
+    }
+    result['scores']['etf_holding'] = score
 
     # 2. 金银比 (35%)
-    try:
-        gs_data = fetch_from_sina()
-        if gs_data and 'gold_silver_ratio' in gs_data:
-            ratio = gs_data['gold_silver_ratio']['value']
-            score, desc = score_gold_silver_ratio(ratio)
-            result['factors']['gold_silver_ratio'] = {
-                'ratio': ratio,
-                'score': score,
-                'description': desc
-            }
-            result['scores']['gold_silver_ratio'] = score
-        else:
-            result['factors']['gold_silver_ratio'] = {'error': '数据不可用'}
-            result['scores']['gold_silver_ratio'] = 50
-    except Exception as e:
-        print(f"金银比数据获取失败: {e}")
-        result['factors']['gold_silver_ratio'] = {'error': str(e)}
-        result['scores']['gold_silver_ratio'] = 50
+    gs_data = fetch_from_sina()
+    if not gs_data or 'gold_silver_ratio' not in gs_data:
+        raise RuntimeError("无法获取金银比数据")
+    ratio = gs_data['gold_silver_ratio']['value']
+    score, desc = score_gold_silver_ratio(ratio)
+    result['factors']['gold_silver_ratio'] = {
+        'ratio': ratio,
+        'score': score,
+        'description': desc
+    }
+    result['scores']['gold_silver_ratio'] = score
 
     # 3. 金价/AISC比率 (25%)
-    try:
-        # 获取黄金当前价格
-        gold_data = fetch_gold_current_price()
-        gold_price = gold_data['price'] if gold_data else None
+    # 获取黄金当前价格
+    gold_data = fetch_gold_current_price()
+    if not gold_data:
+        raise RuntimeError("无法获取金价数据")
+    gold_price = gold_data['price']
 
-        # 获取AISC成本
-        aisc_data = fetch_aisc_data()
-        aisc = None
-        if aisc_data and 'average_4q' in aisc_data:
-            aisc = aisc_data['average_4q']['value']
+    # 获取AISC成本
+    aisc_data = fetch_aisc_data()
+    if not aisc_data or 'average_4q' not in aisc_data:
+        raise RuntimeError("无法获取AISC数据")
+    aisc = aisc_data['average_4q']['value']
 
-        score, desc = score_gold_aisc_ratio(gold_price, aisc)
-        result['factors']['gold_aisc_ratio'] = {
-            'gold_price': gold_price,
-            'aisc': aisc,
-            'ratio': gold_price / aisc if gold_price and aisc else None,
-            'score': score,
-            'description': desc
-        }
-        result['scores']['gold_aisc_ratio'] = score
-    except Exception as e:
-        print(f"AISC数据获取失败: {e}")
-        result['factors']['gold_aisc_ratio'] = {'error': str(e)}
-        result['scores']['gold_aisc_ratio'] = 50
+    score, desc = score_gold_aisc_ratio(gold_price, aisc)
+    result['factors']['gold_aisc_ratio'] = {
+        'gold_price': gold_price,
+        'aisc': aisc,
+        'ratio': gold_price / aisc,
+        'score': score,
+        'description': desc
+    }
+    result['scores']['gold_aisc_ratio'] = score
 
     # 计算加权总分 V
     weights = result['weights']
     scores = result['scores']
 
     v_score = (
-        scores.get('etf_holding', 50) * weights['etf_holding'] +
-        scores.get('gold_silver_ratio', 50) * weights['gold_silver_ratio'] +
-        scores.get('gold_aisc_ratio', 50) * weights['gold_aisc_ratio']
+        scores['etf_holding'] * weights['etf_holding'] +
+        scores['gold_silver_ratio'] * weights['gold_silver_ratio'] +
+        scores['gold_aisc_ratio'] * weights['gold_aisc_ratio']
     )
 
     result['v_score'] = round(v_score, 2)

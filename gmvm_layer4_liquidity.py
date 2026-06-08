@@ -32,26 +32,31 @@ def get_k_liquidity(vix_value, credit_spread):
     ≥ 25           | ≥ 3%      | 0.7         | 双重紧张
     ≥ 35           | 任意      | 0.5         | 流动性危机
     """
+    if vix_value is None:
+        raise RuntimeError("VIX数据不可用")
+    if credit_spread is None:
+        raise RuntimeError("信用利差数据不可用")
+
     # VIX >= 35
     if vix_value >= 35:
         return 0.5, "流动性危机 (VIX ≥ 35)"
 
     # VIX >= 25 (且 < 35)
     if vix_value >= 25:
-        if credit_spread is not None and credit_spread >= 3:
+        if credit_spread >= 3:
             return 0.7, "双重紧张 (VIX 25-35, 信用利差 ≥ 3%)"
         else:
             return 0.8, "恐慌初现 (VIX 25-35, 信用利差 < 3%)"
 
     # VIX 15-25
     if vix_value >= 15:
-        if credit_spread is not None and credit_spread >= 3:
+        if credit_spread >= 3:
             return 0.9, "信用隐忧 (VIX 15-25, 信用利差 ≥ 3%)"
         else:
             return 1.0, "正常环境 (VIX 15-25, 信用利差 < 3%)"
 
     # VIX < 15
-    if credit_spread is not None and credit_spread < 2:
+    if credit_spread < 2:
         return 1.2, "极度宽松 (VIX < 15, 信用利差 < 2%)"
     else:
         return 1.0, "相对宽松 (VIX < 15)"
@@ -71,50 +76,40 @@ def calculate_k_liquidity():
     }
 
     # 1. 获取VIX
+    vix_data = fetch_vix()
     vix_value = None
-    try:
-        vix_data = fetch_vix()
-        if vix_data:
-            # 尝试从ETF获取VIX估值
-            if 'primary_etf' in vix_data and vix_data['primary_etf']:
-                etf = vix_data['primary_etf']
-                vix_value = etf.get('price')
-                result['factors']['vix'] = {
-                    'value': vix_value,
-                    'source': 'TwelveData ETF (VXX)',
-                    'note': 'VIX指数无法直接获取，使用VXX ETF作为代理'
-                }
-            elif 'price' in vix_data:
-                vix_value = vix_data['price']
-                result['factors']['vix'] = {
-                    'value': vix_value,
-                    'source': vix_data.get('source', 'Unknown')
-                }
-            else:
-                result['factors']['vix'] = {'error': '无法获取VIX数据'}
-        else:
-            result['factors']['vix'] = {'error': '无数据'}
-    except Exception as e:
-        print(f"VIX数据获取失败: {e}")
-        result['factors']['vix'] = {'error': str(e)}
+    if vix_data:
+        # 尝试从ETF获取VIX估值
+        if 'primary_etf' in vix_data and vix_data['primary_etf']:
+            etf = vix_data['primary_etf']
+            vix_value = etf.get('price')
+            result['factors']['vix'] = {
+                'value': vix_value,
+                'source': 'TwelveData ETF (VXX)',
+                'note': 'VIX指数无法直接获取，使用VXX ETF作为代理'
+            }
+        elif 'price' in vix_data:
+            vix_value = vix_data['price']
+            result['factors']['vix'] = {
+                'value': vix_value,
+                'source': vix_data.get('source', 'Unknown')
+            }
+    if vix_value is None:
+        raise RuntimeError("无法获取VIX数据")
 
     # 2. 获取信用利差
+    spread_data = fetch_credit_spread()
     credit_spread = None
-    try:
-        spread_data = fetch_credit_spread()
-        if spread_data and 'credit_spread' in spread_data:
-            credit_spread = spread_data['credit_spread']['value']
-            result['factors']['credit_spread'] = {
-                'value': credit_spread,
-                'baa_yield': spread_data.get('baa_yield', {}).get('yield'),
-                'treasury_10y': spread_data.get('us_bond_10y', {}).get('yield'),
-                'source': 'FRED + AkShare'
-            }
-        else:
-            result['factors']['credit_spread'] = {'error': '无法获取信用利差数据'}
-    except Exception as e:
-        print(f"信用利差数据获取失败: {e}")
-        result['factors']['credit_spread'] = {'error': str(e)}
+    if spread_data and 'credit_spread' in spread_data:
+        credit_spread = spread_data['credit_spread']['value']
+        result['factors']['credit_spread'] = {
+            'value': credit_spread,
+            'baa_yield': spread_data.get('baa_yield', {}).get('yield'),
+            'treasury_10y': spread_data.get('us_bond_10y', {}).get('yield'),
+            'source': 'FRED + AkShare'
+        }
+    if credit_spread is None:
+        raise RuntimeError("无法获取信用利差数据")
 
     # 计算K_liquidity
     k_liquidity, status = get_k_liquidity(vix_value, credit_spread)
