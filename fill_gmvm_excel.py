@@ -54,7 +54,7 @@ def collect_data():
     try:
         import fetch_us_bond_tips
         tips_result = fetch_us_bond_tips.fetch_bond_data()
-        tips_10y = tips_result.get('tips_10y', {}).get('latest', {}).get('value')
+        tips_10y = tips_result.get('data', {}).get('tips_10y', {}).get('latest', {}).get('value')
         data['10Y TIPS(%)'] = tips_10y
     except Exception as e:
         print(f"  TIPS: {e}")
@@ -111,11 +111,26 @@ def collect_data():
     # 10. 技术指标
     try:
         import fetch_gold_technical
-        tech_result = fetch_gold_technical.fetch_gold_current_price()
-        data['RSI14'] = tech_result.get('rsi')
-        data['MACD背离'] = tech_result.get('macd_divergence_score', 50)
-        data['20日均线斜率(%)'] = tech_result.get('ma20_slope')
-        data['布林带状态'] = tech_result.get('bollinger_score', 50)
+        tech_result = fetch_gold_technical.calculate_gold_technical_analysis()
+        indicators = tech_result.get('indicators', {})
+        
+        # RSI14
+        rsi_data = indicators.get('rsi_14', {})
+        data['RSI14'] = rsi_data.get('value')
+        
+        # MACD背离评分
+        macd_data = indicators.get('macd_12_26_9', {})
+        data['MACD背离'] = macd_data.get('divergence_score', 50)
+        
+        # 20日均线斜率 - 使用日涨幅
+        ma_slope_data = indicators.get('ma_slope_20', {})
+        pct_change_5d = ma_slope_data.get('pct_change_5d', 0)
+        # 转换为日涨幅
+        data['20日均线斜率(%)'] = round(pct_change_5d / 5, 4) if pct_change_5d else None
+        
+        # 布林带状态评分
+        bollinger_data = indicators.get('bollinger_20_2', {})
+        data['布林带状态'] = bollinger_data.get('score', 50)
     except Exception as e:
         print(f"  技术指标: {e}")
         data['RSI14'] = None
@@ -137,7 +152,8 @@ def collect_data():
     try:
         import fetch_credit_spread
         cs_result = fetch_credit_spread.fetch_credit_spread()
-        data['信用利差(%)'] = cs_result.get('spread')
+        credit_spread_data = cs_result.get('credit_spread', {})
+        data['信用利差(%)'] = credit_spread_data.get('value')
     except Exception as e:
         print(f"  信用利差: {e}")
         data['信用利差(%)'] = None
