@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 GMVM v6.1 数据收集脚本 - 增强版
-自动更新Excel表格和网页展示
+自动更新Excel表格和网页展示，并上传到GitHub
 """
 import sys
 import asyncio
+import subprocess
 from datetime import datetime
 from pathlib import Path
 import re
@@ -248,19 +249,13 @@ def update_webpage(data):
         'GPR': f"{data.get('GPR指数', 0):.2f}",
         '布油': f"{data.get('布油价格($)', 0):.2f}",
         'CPI': f"{data.get('CPI同比(%)', 0):.2f}",
+        'footer-timestamp': data.get('收集日期', datetime.now().strftime('%Y-%m-%d')),
     }
 
     # 替换网页中的数据
     for key, value in replacements.items():
-        pattern = f'id="{key}"'
-        if pattern in html_content:
-            # 替换标签内容
-            html_content = re.sub(
-                f'(<[^>]*id="{key}"[^>]*>)(.*?)(</[^>]+>)',
-                f'\\g<1>{value}\\g<3>',
-                html_content,
-                flags=re.DOTALL
-            )
+        pattern = f'(<[^>]*id="{key}"[^>]*>)(.*?)(</[^>]+>)'
+        html_content = re.sub(pattern, f'\\g<1>{value}\\g<3>', html_content, flags=re.DOTALL)
 
     # 保存更新后的网页
     with open(html_path, 'w', encoding='utf-8') as f:
@@ -269,11 +264,73 @@ def update_webpage(data):
     print(f"✅ 网页已更新: {html_path}")
 
 
+def auto_upload_to_github():
+    """自动上传到GitHub"""
+    print("\n正在自动上传到GitHub...")
+
+    try:
+        # 添加所有更改
+        result = subprocess.run(
+            ['git', 'add', '.'],
+            cwd=Path(__file__).parent,
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            print(f"⚠️ git add 失败: {result.stderr}")
+            return False
+
+        # 检查是否有更改
+        result = subprocess.run(
+            ['git', 'status', '--porcelain'],
+            cwd=Path(__file__).parent,
+            capture_output=True,
+            text=True
+        )
+        if not result.stdout.strip():
+            print("⚠️ 没有需要提交的更改")
+            return True
+
+        # 提交
+        commit_msg = f"更新数据收集总表({datetime.now().strftime('%Y-%m-%d')})"
+        result = subprocess.run(
+            ['git', 'commit', '-m', commit_msg],
+            cwd=Path(__file__).parent,
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            print(f"⚠️ git commit 失败: {result.stderr}")
+            return False
+
+        # 推送
+        result = subprocess.run(
+            ['git', 'push'],
+            cwd=Path(__file__).parent,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        if result.returncode != 0:
+            print(f"⚠️ git push 失败: {result.stderr}")
+            return False
+
+        print("✅ GitHub上传成功！")
+        return True
+
+    except subprocess.TimeoutExpired:
+        print("⚠️ 上传超时")
+        return False
+    except Exception as e:
+        print(f"⚠️ 上传过程出错: {e}")
+        return False
+
+
 def main():
     start_time = datetime.now()
     print("=" * 60)
     print("GMVM v6.1 数据收集脚本 (增强版)")
-    print("自动更新Excel表格和网页展示")
+    print("自动更新Excel、网页，并上传到GitHub")
     print("=" * 60)
 
     sys.path.insert(0, str(Path(__file__).parent))
@@ -294,10 +351,12 @@ def main():
     # 更新网页
     update_webpage(data)
 
+    # 自动上传到GitHub
+    auto_upload_to_github()
+
     elapsed = (datetime.now() - start_time).total_seconds()
 
-    print(f"\n✅ 数据收集完成！耗时: {elapsed:.2f} 秒")
-    print("\n请运行 'git add . && git push' 上传更新到GitHub")
+    print(f"\n✅ 全部完成！耗时: {elapsed:.2f} 秒")
 
 
 if __name__ == '__main__':
