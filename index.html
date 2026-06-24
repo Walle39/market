@@ -35,7 +35,6 @@
             overflow-x: hidden;
         }
 
-        /* Animated Background */
         .bg-pattern {
             position: fixed;
             top: 0;
@@ -71,7 +70,6 @@
             z-index: 1;
         }
 
-        /* Header */
         .header {
             text-align: center;
             margin-bottom: 60px;
@@ -79,14 +77,8 @@
         }
 
         @keyframes fadeInDown {
-            from {
-                opacity: 0;
-                transform: translateY(-30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(-30px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .header h1 {
@@ -116,7 +108,6 @@
             opacity: 0.8;
         }
 
-        /* Signal Banner */
         .signal-banner {
             background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
             border: 1px solid var(--border-color);
@@ -130,14 +121,8 @@
         }
 
         @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .signal-banner::before {
@@ -200,7 +185,6 @@
             color: var(--accent-gold);
         }
 
-        /* Layers Grid */
         .layers-section {
             margin-bottom: 50px;
         }
@@ -286,10 +270,6 @@
             width: 0;
         }
 
-        .layer-card:hover .layer-bar-fill {
-            width: var(--fill-percent) !important;
-        }
-
         .layer-interpretation {
             margin-top: 12px;
             font-size: 0.85rem;
@@ -297,7 +277,6 @@
             line-height: 1.5;
         }
 
-        /* Data Table */
         .data-section {
             background: var(--bg-card);
             border: 1px solid var(--border-color);
@@ -346,7 +325,6 @@
             font-weight: 500;
         }
 
-        /* Footer */
         .footer {
             text-align: center;
             padding: 30px;
@@ -365,43 +343,12 @@
             text-decoration: underline;
         }
 
-        /* Responsive */
         @media (max-width: 768px) {
-            .header h1 {
-                font-size: 2.5rem;
-            }
-
-            .signal-value {
-                font-size: 3.5rem;
-            }
-
-            .layers-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .data-table {
-                font-size: 0.9rem;
-            }
-
-            .data-table th,
-            .data-table td {
-                padding: 10px 12px;
-            }
-        }
-
-        /* Loading Animation */
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid var(--bg-secondary);
-            border-radius: 50%;
-            border-top-color: var(--accent-gold);
-            animation: spin 1s ease-in-out infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+            .header h1 { font-size: 2.5rem; }
+            .signal-value { font-size: 3.5rem; }
+            .layers-grid { grid-template-columns: 1fr; }
+            .data-table { font-size: 0.9rem; }
+            .data-table th, .data-table td { padding: 10px 12px; }
         }
     </style>
 </head>
@@ -410,14 +357,12 @@
     <div class="grid-overlay"></div>
 
     <div class="container">
-        <!-- Header -->
         <header class="header">
             <h1>GMVM v6.1</h1>
             <p class="subtitle">黄金市场估值模型</p>
-            <p class="timestamp" id="timestamp"></p>
+            <p class="timestamp" id="timestamp">2026-06-24</p>
         </header>
 
-        <!-- Signal Banner -->
         <div class="signal-banner">
             <div class="signal-value" id="final-signal">-0.0928</div>
             <div class="signal-label">综合信号</div>
@@ -434,68 +379,66 @@
             </div>
         </div>
 
-        <!-- Layers Section -->
         <section class="layers-section">
             <h2 class="section-title">各层系数</h2>
             <div class="layers-grid">
                 <div class="layer-card">
                     <div class="layer-header">
                         <span class="layer-name">S_macro</span>
-                        <span class="layer-value">-0.10</span>
+                        <span class="layer-value" id="s_macro_value">-0.10</span>
                     </div>
                     <div class="layer-bar">
                         <div class="layer-bar-fill" style="background: linear-gradient(90deg, var(--signal-neutral), var(--accent-gold)); --fill-percent: 50%;"></div>
                     </div>
-                    <div class="layer-interpretation">中性宏观环境</div>
+                    <div class="layer-interpretation" id="s_macro_interpretation">中性宏观环境</div>
                 </div>
 
                 <div class="layer-card">
                     <div class="layer-header">
                         <span class="layer-name">K_verif</span>
-                        <span class="layer-value">0.843</span>
+                        <span class="layer-value" id="k_verif_value">0.843</span>
                     </div>
                     <div class="layer-bar">
                         <div class="layer-bar-fill" style="background: linear-gradient(90deg, var(--signal-negative), var(--signal-neutral)); --fill-percent: 84.3%;"></div>
                     </div>
-                    <div class="layer-interpretation">市场验证偏弱 - 温和看空信号</div>
+                    <div class="layer-interpretation" id="k_verif_interpretation">市场验证偏弱 - 温和看空信号</div>
                 </div>
 
                 <div class="layer-card">
                     <div class="layer-header">
                         <span class="layer-name">K_trend</span>
-                        <span class="layer-value">1.00</span>
+                        <span class="layer-value" id="k_trend_value">1.00</span>
                     </div>
                     <div class="layer-bar">
                         <div class="layer-bar-fill" style="background: linear-gradient(90deg, var(--signal-neutral), var(--signal-positive)); --fill-percent: 100%;"></div>
                     </div>
-                    <div class="layer-interpretation">趋势动量中性</div>
+                    <div class="layer-interpretation" id="k_trend_interpretation">趋势动量中性</div>
                 </div>
 
                 <div class="layer-card">
                     <div class="layer-header">
                         <span class="layer-name">K_liquidity</span>
-                        <span class="layer-value">1.00</span>
+                        <span class="layer-value" id="k_liquidity_value">1.00</span>
                     </div>
                     <div class="layer-bar">
                         <div class="layer-bar-fill" style="background: linear-gradient(90deg, var(--signal-positive), var(--accent-gold)); --fill-percent: 100%;"></div>
                     </div>
-                    <div class="layer-interpretation">流动性正常 - 中性环境</div>
+                    <div class="layer-interpretation" id="k_liquidity_interpretation">流动性正常 - 中性环境</div>
                 </div>
 
                 <div class="layer-card">
                     <div class="layer-header">
                         <span class="layer-name">K_geo</span>
-                        <span class="layer-value">1.10</span>
+                        <span class="layer-value" id="k_geo_value">1.10</span>
                     </div>
                     <div class="layer-bar">
                         <div class="layer-bar-fill" style="background: linear-gradient(90deg, var(--accent-gold), var(--signal-positive)); --fill-percent: 100%;"></div>
                     </div>
-                    <div class="layer-interpretation">地缘轻微利多</div>
+                    <div class="layer-interpretation" id="k_geo_interpretation">地缘轻微利多</div>
                 </div>
             </div>
         </section>
 
-        <!-- Data Table -->
         <section class="data-section">
             <h2 class="section-title">数据收集总表</h2>
             <table class="data-table">
@@ -509,106 +452,105 @@
                 <tbody>
                     <tr>
                         <td class="metric-name">收集日期</td>
-                        <td class="metric-value">2026-06-23</td>
+                        <td class="metric-value" id="收集日期">2026-06-24</td>
                         <td>数据更新日期</td>
                     </tr>
                     <tr>
                         <td class="metric-name">央行购金(吨)</td>
-                        <td class="metric-value">870.5</td>
+                        <td class="metric-value" id="央行购金">870.5</td>
                         <td>最近4季度总和</td>
                     </tr>
                     <tr>
                         <td class="metric-name">M2同比增速(%)</td>
-                        <td class="metric-value">4.88</td>
+                        <td class="metric-value" id="M2增速">4.88</td>
                         <td>货币供应量增长</td>
                     </tr>
                     <tr>
                         <td class="metric-name">美债/GDP比率(%)</td>
-                        <td class="metric-value">122.77</td>
+                        <td class="metric-value" id="美债GDP">122.77</td>
                         <td>债务水平 - 极高</td>
                     </tr>
                     <tr>
                         <td class="metric-name">10Y TIPS(%)</td>
-                        <td class="metric-value">2.21</td>
+                        <td class="metric-value" id="TIPS">2.28</td>
                         <td>实际利率</td>
                     </tr>
                     <tr>
                         <td class="metric-name">DXY</td>
-                        <td class="metric-value">101.07</td>
+                        <td class="metric-value" id="DXY">101.60</td>
                         <td>美元指数</td>
                     </tr>
                     <tr>
                         <td class="metric-name">ETF持仓4周变化(%)</td>
-                        <td class="metric-value">-1.55</td>
+                        <td class="metric-value" id="ETF变化">-2.15</td>
                         <td>持仓下降</td>
                     </tr>
                     <tr>
                         <td class="metric-name">金银比</td>
-                        <td class="metric-value">65.94</td>
+                        <td class="metric-value" id="金银比">66.58</td>
                         <td>黄金/白银价格比</td>
                     </tr>
                     <tr>
                         <td class="metric-name">金价($)</td>
-                        <td class="metric-value">4,120.36</td>
+                        <td class="metric-value" id="金价">4,074.66</td>
                         <td>现货黄金价格</td>
                     </tr>
                     <tr>
                         <td class="metric-name">金价/AISC</td>
-                        <td class="metric-value">2.55</td>
+                        <td class="metric-value" id="金价AISC">2.39</td>
                         <td>价格/成本比 - 估值极高</td>
                     </tr>
                     <tr>
                         <td class="metric-name">RSI14</td>
-                        <td class="metric-value">55.94</td>
+                        <td class="metric-value" id="RSI14">50.97</td>
                         <td>相对强弱指标</td>
                     </tr>
                     <tr>
                         <td class="metric-name">MACD背离</td>
-                        <td class="metric-value">50</td>
+                        <td class="metric-value" id="MACD">50</td>
                         <td>无背离</td>
                     </tr>
                     <tr>
                         <td class="metric-name">20日均线斜率(%)</td>
-                        <td class="metric-value">0.182</td>
+                        <td class="metric-value" id="均线斜率">0.200</td>
                         <td>温和上涨趋势</td>
                     </tr>
                     <tr>
                         <td class="metric-name">布林带状态</td>
-                        <td class="metric-value">50</td>
+                        <td class="metric-value" id="布林带">50</td>
                         <td>中性</td>
                     </tr>
                     <tr>
                         <td class="metric-name">VIX</td>
-                        <td class="metric-value">22.52</td>
+                        <td class="metric-value" id="VIX">23.87</td>
                         <td>波动率指数</td>
                     </tr>
                     <tr>
                         <td class="metric-name">信用利差(%)</td>
-                        <td class="metric-value">1.59</td>
+                        <td class="metric-value" id="信用利差">1.60</td>
                         <td>Baa-10Y</td>
                     </tr>
                     <tr>
                         <td class="metric-name">GPR指数</td>
-                        <td class="metric-value">184.18</td>
+                        <td class="metric-value" id="GPR">184.18</td>
                         <td>地缘政治风险</td>
                     </tr>
                     <tr>
                         <td class="metric-name">布油价格($)</td>
-                        <td class="metric-value">76.66</td>
+                        <td class="metric-value" id="布油">75.51</td>
                         <td>原油价格</td>
                     </tr>
                     <tr>
                         <td class="metric-name">CPI同比(%)</td>
-                        <td class="metric-value">4.2</td>
+                        <td class="metric-value" id="CPI">4.20</td>
                         <td>通胀水平</td>
                     </tr>
                 </tbody>
             </table>
         </section>
 
-        <!-- Footer -->
         <footer class="footer">
-            <p>数据更新时间: 2026-06-23 | 模型版本: GMVM v6.1</p>
+            <p>数据更新时间: <span id="footer-timestamp">2026-06-23</span> | 模型版本: GMVM v6.1</p>
             <p style="margin-top: 10px;">
                 数据来源: <a href="https://github.com/Walle39/market" target="_blank">GitHub Market Repository</a>
             </p>
@@ -616,7 +558,6 @@
     </div>
 
     <script>
-        // Update timestamp
         document.getElementById('timestamp').textContent = '更新时间: ' + new Date().toLocaleString('zh-CN', {
             year: 'numeric',
             month: '2-digit',
@@ -626,7 +567,6 @@
             second: '2-digit'
         });
 
-        // Animate numbers on load
         function animateValue(element, start, end, duration) {
             const range = end - start;
             const startTime = performance.now();
@@ -651,14 +591,12 @@
             requestAnimationFrame(update);
         }
 
-        // Trigger animations when page loads
         window.addEventListener('load', () => {
             setTimeout(() => {
                 animateValue(document.getElementById('final-signal'), 0, -0.0928, 1500);
             }, 500);
         });
 
-        // Add hover effects to layer cards
         document.querySelectorAll('.layer-card').forEach(card => {
             card.addEventListener('mouseenter', () => {
                 const bar = card.querySelector('.layer-bar-fill');
