@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 GMVM v6.1 数据收集脚本 - 增强版
-自动更新Excel表格和网页展示，并上传到GitHub
+自动更新Excel表格、网页展示、估值信号，并上传到GitHub
 """
 import sys
 import asyncio
@@ -26,6 +26,13 @@ import fetch_credit_spread
 import fetch_gpr
 import fetch_crude_oil
 import fetch_usa_cpi
+
+# 导入GMVM模型模块
+from gmvm_layer1_macro import calculate_s_macro
+from gmvm_layer2_verif import calculate_k_verif
+from gmvm_layer3_trend import calculate_k_trend
+from gmvm_layer4_liquidity import calculate_k_liquidity
+from gmvm_layer5_geo import calculate_k_geo
 
 
 async def fetch_task(name, func, *args):
@@ -264,6 +271,78 @@ def update_webpage(data):
     print(f"✅ 网页已更新: {html_path}")
 
 
+def calculate_gmvm_signal():
+    """计算GMVM v6.1估值信号"""
+    print("\n正在计算GMVM v6.1估值信号...")
+
+    try:
+        # 计算各层
+        s_macro_result = calculate_s_macro()
+        k_verif_result = calculate_k_verif()
+        k_trend_result = calculate_k_trend()
+        k_liquidity_result = calculate_k_liquidity()
+        k_geo_result = calculate_k_geo()
+
+        # 计算原始信号
+        s_macro = s_macro_result['s_macro']
+        k_verif = k_verif_result['k_verif']
+        k_trend = k_trend_result['k_trend']
+        k_liquidity = k_liquidity_result['k_liquidity']
+        k_geo = k_geo_result['k_geo']
+
+        raw_signal = s_macro * k_verif * k_trend * k_liquidity * k_geo
+
+        # 确定信号等级
+        if raw_signal >= 0.15:
+            signal_grade = "🟢 强烈看多"
+            action = "积极做多，分批加仓"
+            position = "60%-80%"
+        elif raw_signal >= 0.05:
+            signal_grade = "🟡 偏多"
+            action = "逢低做多，逐步建仓"
+            position = "40%-60%"
+        elif raw_signal >= -0.05:
+            signal_grade = "⚪ 中性"
+            action = "观望，不做方向性操作"
+            position = "20%-40%"
+        elif raw_signal >= -0.15:
+            signal_grade = "🟠 偏空"
+            action = "逢高减仓，谨慎做空"
+            position = "0%-20%"
+        else:
+            signal_grade = "🔴 强烈看空"
+            action = "清仓或做空，严格止损"
+            position = "0% 或 空单"
+
+        result = {
+            'final_signal': raw_signal,
+            'signal_grade': signal_grade,
+            'action': action,
+            'position': position,
+            'S_macro': s_macro,
+            'K_verif': k_verif,
+            'K_trend': k_trend,
+            'K_liquidity': k_liquidity,
+            'K_geo': k_geo,
+            's_macro_interpretation': s_macro_result.get('signal', ''),
+            'k_verif_interpretation': k_verif_result.get('interpretation', ''),
+            'k_trend_interpretation': k_trend_result.get('interpretation', ''),
+            'k_liquidity_interpretation': k_liquidity_result.get('interpretation', ''),
+            'k_geo_interpretation': k_geo_result.get('interpretation', ''),
+        }
+
+        print(f"  最终信号: {raw_signal:.4f}")
+        print(f"  信号等级: {signal_grade}")
+        print(f"  操作建议: {action}")
+        print(f"  建议仓位: {position}")
+
+        return result
+
+    except Exception as e:
+        print(f"⚠️ GMVM计算失败: {e}")
+        return None
+
+
 def auto_upload_to_github():
     """自动上传到GitHub"""
     print("\n正在自动上传到GitHub...")
@@ -344,6 +423,11 @@ def main():
     print("=" * 60)
     for key, value in data.items():
         print(f"  {key}: {value}")
+
+    # 计算GMVM估值信号
+    gmvm_result = calculate_gmvm_signal()
+    if gmvm_result:
+        data.update(gmvm_result)
 
     # 更新Excel
     fill_excel(data)

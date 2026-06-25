@@ -364,17 +364,17 @@
         </header>
 
         <div class="signal-banner">
-            <div class="signal-value" id="final-signal">-0.0928</div>
+            <div class="signal-value" id="final-signal">-0.0861</div>
             <div class="signal-label">综合信号</div>
-            <div class="signal-grade" id="signal-grade">⚪ 中性</div>
+            <div class="signal-grade" id="signal-grade">🟠 偏空</div>
             <div class="recommendation">
                 <div class="rec-item">
                     <div class="rec-label">操作建议</div>
-                    <div class="rec-value" id="action">观望，不做方向性操作</div>
+                    <div class="rec-value" id="action">逢高减仓，谨慎做空</div>
                 </div>
                 <div class="rec-item">
                     <div class="rec-label">建议仓位</div>
-                    <div class="rec-value" id="position">20%-40%</div>
+                    <div class="rec-value" id="position">0%-20%</div>
                 </div>
             </div>
         </div>
@@ -396,7 +396,7 @@
                 <div class="layer-card">
                     <div class="layer-header">
                         <span class="layer-name">K_verif</span>
-                        <span class="layer-value" id="k_verif_value">0.843</span>
+                        <span class="layer-value" id="k_verif_value">0.770</span>
                     </div>
                     <div class="layer-bar">
                         <div class="layer-bar-fill" style="background: linear-gradient(90deg, var(--signal-negative), var(--signal-neutral)); --fill-percent: 84.3%;"></div>
@@ -407,7 +407,7 @@
                 <div class="layer-card">
                     <div class="layer-header">
                         <span class="layer-name">K_trend</span>
-                        <span class="layer-value" id="k_trend_value">1.00</span>
+                        <span class="layer-value" id="k_trend_value">1.02</span>
                     </div>
                     <div class="layer-bar">
                         <div class="layer-bar-fill" style="background: linear-gradient(90deg, var(--signal-neutral), var(--signal-positive)); --fill-percent: 100%;"></div>
@@ -477,7 +477,7 @@
                     </tr>
                     <tr>
                         <td class="metric-name">DXY</td>
-                        <td class="metric-value" id="DXY">101.48</td>
+                        <td class="metric-value" id="DXY">101.49</td>
                         <td>美元指数</td>
                     </tr>
                     <tr>
@@ -487,12 +487,12 @@
                     </tr>
                     <tr>
                         <td class="metric-name">金银比</td>
-                        <td class="metric-value" id="金银比">69.83</td>
+                        <td class="metric-value" id="金银比">69.64</td>
                         <td>黄金/白银价格比</td>
                     </tr>
                     <tr>
                         <td class="metric-name">金价($)</td>
-                        <td class="metric-value" id="金价">3,996.95</td>
+                        <td class="metric-value" id="金价">3,994.70</td>
                         <td>现货黄金价格</td>
                     </tr>
                     <tr>
@@ -537,7 +537,7 @@
                     </tr>
                     <tr>
                         <td class="metric-name">布油价格($)</td>
-                        <td class="metric-value" id="布油">72.83</td>
+                        <td class="metric-value" id="布油">72.85</td>
                         <td>原油价格</td>
                     </tr>
                     <tr>
@@ -593,7 +593,9 @@
 
         window.addEventListener('load', () => {
             setTimeout(() => {
-                animateValue(document.getElementById('final-signal'), 0, -0.0928, 1500);
+                const signalEl = document.getElementById('final-signal');
+                const signalValue = parseFloat(signalEl.textContent) || 0;
+                animateValue(signalEl, 0, signalValue, 1500);
             }, 500);
         });
 

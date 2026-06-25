@@ -37,30 +37,36 @@ def get_fed_expectation_input():
     获取Fed预期编码
     优先级:
     1. 环境变量 MANUAL_FED_EXPECTATION
-    2. 手动输入 (标准输入)
+    2. 手动输入 (标准输入) - 仅在交互式环境下
     3. TIPS实际利率作为备用
     """
-    # 1. 检查环境变量
+    # 1. 检查全局变量设置
     if MANUAL_FED_EXPECTATION is not None:
-        return MANUAL_FED_EXPECTATION, "环境变量设置"
+        return MANUAL_FED_EXPECTATION, "手动设置"
 
-    # 2. 提示手动输入
-    print("\n" + "=" * 50)
-    print("Fed预期编码选择 (跳过请按回车使用TIPS备用)")
-    print("=" * 50)
-    print("  -1 = 鹰派 (加息预期)")
-    print("   0 = 中性 (预期不变)")
-    print("  +1 = 鸽派 (降息预期)")
-    print("=" * 50)
+    # 2. 检查环境变量
+    env_fed = os.environ.get('MANUAL_FED_EXPECTATION')
+    if env_fed is not None and env_fed in ['-1', '0', '1']:
+        return int(env_fed), "环境变量设置"
 
-    try:
-        user_input = input("请输入Fed预期编码 (-1/0/1): ").strip()
-        if user_input in ['-1', '0', '1']:
-            return int(user_input), "手动输入"
-    except EOFError:
-        pass  # 非交互环境，跳过
+    # 3. 仅在交互式环境下提示手动输入
+    if sys.stdin.isatty():
+        print("\n" + "=" * 50)
+        print("Fed预期编码选择 (跳过请按回车使用TIPS备用)")
+        print("=" * 50)
+        print("  -1 = 鹰派 (加息预期)")
+        print("   0 = 中性 (预期不变)")
+        print("  +1 = 鸽派 (降息预期)")
+        print("=" * 50)
 
-    # 3. 返回None表示使用TIPS备用
+        try:
+            user_input = input("请输入Fed预期编码 (-1/0/1): ").strip()
+            if user_input in ['-1', '0', '1']:
+                return int(user_input), "手动输入"
+        except EOFError:
+            pass  # 非交互环境，跳过
+
+    # 4. 返回None表示使用TIPS备用
     return None, "将使用TIPS备用"
 
 def encode_fed_expectation_tips(tips_value):
