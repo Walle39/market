@@ -108,6 +108,129 @@
             opacity: 0.8;
         }
 
+        .update-btn {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 10px 28px;
+            background: linear-gradient(135deg, var(--accent-gold) 0%, #b8941f 100%);
+            color: #0a0a0f;
+            border: none;
+            border-radius: 50px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Noto Sans SC', sans-serif;
+        }
+
+        .update-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(212, 175, 55, 0.4);
+        }
+
+        .update-btn:active {
+            transform: translateY(0);
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 450px;
+            width: 90%;
+            text-align: center;
+            position: relative;
+            animation: modalFadeIn 0.3s ease-out;
+        }
+
+        @keyframes modalFadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.9) translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        .modal-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 15px;
+        }
+
+        .modal-desc {
+            color: var(--text-secondary);
+            line-height: 1.8;
+            margin-bottom: 25px;
+        }
+
+        .modal-close {
+            padding: 10px 30px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 50px;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .modal-close:hover {
+            border-color: var(--accent-gold);
+            color: var(--accent-gold);
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .modal-primary {
+            padding: 10px 30px;
+            background: linear-gradient(135deg, var(--accent-gold) 0%, #b8941f 100%);
+            color: #0a0a0f;
+            border: none;
+            border-radius: 50px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .modal-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(212, 175, 55, 0.4);
+        }
+
         .signal-banner {
             background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
             border: 1px solid var(--border-color);
@@ -361,6 +484,7 @@
             <h1>GMVM v6.1</h1>
             <p class="subtitle">黄金市场估值模型</p>
             <p class="timestamp" id="timestamp">2026-06-25 12:17:49</p>
+            <button class="update-btn" onclick="openModal()">🔄 更新数据</button>
         </header>
 
         <div class="signal-banner">
@@ -549,6 +673,21 @@
             </table>
         </section>
 
+        <div class="modal-overlay" id="updateModal" onclick="closeModalOutside(event)">
+            <div class="modal" onclick="event.stopPropagation()">
+                <div class="modal-icon">⏳</div>
+                <h3 class="modal-title">数据更新中</h3>
+                <p class="modal-desc">
+                    正在触发数据更新流程，包括数据获取、模型计算和网页部署。<br><br>
+                    <strong>请等待约1-2分钟后刷新页面</strong>查看最新数据。
+                </p>
+                <div class="modal-actions">
+                    <button class="modal-primary" onclick="triggerUpdate()">立即触发更新</button>
+                    <button class="modal-close" onclick="closeModal()">知道了</button>
+                </div>
+            </div>
+        </div>
+
         <footer class="footer">
             <p>数据更新时间: <span id="footer-timestamp">2026-06-25 12:17:49</span> | 模型版本: GMVM v6.1</p>
             <p style="margin-top: 10px;">
@@ -597,6 +736,31 @@
                     bar.style.width = bar.style.getPropertyValue('--fill-percent');
                 }
             });
+        });
+
+        function openModal() {
+            document.getElementById('updateModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('updateModal').classList.remove('active');
+        }
+
+        function closeModalOutside(event) {
+            if (event.target.id === 'updateModal') {
+                closeModal();
+            }
+        }
+
+        function triggerUpdate() {
+            window.open('https://github.com/Walle39/market/actions', '_blank');
+            closeModal();
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeModal();
+            }
         });
     </script>
 </body>
