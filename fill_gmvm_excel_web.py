@@ -47,7 +47,7 @@ async def fetch_task(name, func, *args):
 async def collect_data_async():
     """异步收集所有需要的数据"""
     data = {}
-    data['收集日期'] = datetime.now().strftime('%Y-%m-%d')
+    data['收集日期'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     print("正在并发收集数据...")
 
