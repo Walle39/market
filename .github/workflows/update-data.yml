@@ -18,7 +18,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          persist-credentials: false
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Set up Git config
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git config --local core.autocrlf false
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -38,7 +45,10 @@ jobs:
 
       - name: Commit and push changes
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
           git add -A
-          git diff --quiet && git diff --staged --quiet || (git commit -m "自动更新数据 $(date +'%Y-%m-%d')" && git push)
+          if ! git diff --cached --quiet; then
+            git commit -m "自动更新数据 $(date +'%Y-%m-%d %H:%M:%S')"
+            git push
+          else
+            echo "没有更改需要提交"
+          fi
