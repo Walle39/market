@@ -7,8 +7,17 @@ import sys
 import asyncio
 import subprocess
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 import re
+
+# 北京时间
+BEIJING_TZ = ZoneInfo('Asia/Shanghai')
+
+
+def now_beijing():
+    """获取当前北京时间"""
+    return datetime.now(BEIJING_TZ)
 
 from openpyxl import load_workbook
 
@@ -47,7 +56,7 @@ async def fetch_task(name, func, *args):
 async def collect_data_async():
     """异步收集所有需要的数据"""
     data = {}
-    data['收集日期'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    data['收集日期'] = now_beijing().strftime('%Y-%m-%d %H:%M:%S')
 
     print("正在并发收集数据...")
 
@@ -227,7 +236,7 @@ def update_webpage(data):
 
     # 定义要替换的数据
     replacements = {
-        'timestamp': data.get('收集日期', datetime.now().strftime('%Y-%m-%d')),
+        'timestamp': data.get('收集日期', now_beijing().strftime('%Y-%m-%d')),
         'final-signal': f"{data.get('final_signal', -0.0928):.4f}",
         'signal-grade': data.get('signal_grade', '⚪ 中性'),
         'action': data.get('action', '观望，不做方向性操作'),
@@ -256,7 +265,7 @@ def update_webpage(data):
         'GPR': f"{data.get('GPR指数', 0):.2f}",
         '布油': f"{data.get('布油价格($)', 0):.2f}",
         'CPI': f"{data.get('CPI同比(%)', 0):.2f}",
-        'footer-timestamp': data.get('收集日期', datetime.now().strftime('%Y-%m-%d')),
+        'footer-timestamp': data.get('收集日期', now_beijing().strftime('%Y-%m-%d')),
     }
 
     # 替换网页中的数据
@@ -371,7 +380,7 @@ def auto_upload_to_github():
             return True
 
         # 提交
-        commit_msg = f"更新数据收集总表({datetime.now().strftime('%Y-%m-%d')})"
+        commit_msg = f"更新数据收集总表({now_beijing().strftime('%Y-%m-%d')})"
         result = subprocess.run(
             ['git', 'commit', '-m', commit_msg],
             cwd=Path(__file__).parent,
@@ -406,7 +415,7 @@ def auto_upload_to_github():
 
 
 def main():
-    start_time = datetime.now()
+    start_time = now_beijing()
     print("=" * 60)
     print("GMVM v6.1 数据收集脚本 (增强版)")
     print("自动更新Excel、网页，并上传到GitHub")
@@ -438,7 +447,7 @@ def main():
     # 自动上传到GitHub
     auto_upload_to_github()
 
-    elapsed = (datetime.now() - start_time).total_seconds()
+    elapsed = (now_beijing() - start_time).total_seconds()
 
     print(f"\n✅ 全部完成！耗时: {elapsed:.2f} 秒")
 
